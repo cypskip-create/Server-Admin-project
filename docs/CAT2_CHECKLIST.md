@@ -14,13 +14,13 @@ Status key: **Implemented** means code/documentation exists; **Automated** means
 
 | Rubric item | Implemented code | Automated test | Kali VM evidence |
 |---|---|---|---|
-| Signup/login pages pushed and cloned (3) | `public/signup.php`, `public/login.php`; Git remote configured | Auth integration test implemented; CI result pending | Not yet captured: clone and browser pages |
-| Install/configure MariaDB (1) | `scripts/setup-kali.sh`, migrations | CI MariaDB service | Not yet captured: service status and DB setup |
-| Create CAT2 database (1) | `database/migrations/001_schema.sql` and migration runner | CI applies migrations | Not yet captured: `SHOW DATABASES`, tables |
-| PHP to DB connection (3) | PDO config in `config/db.php` | DB integration implemented; CI result pending | Not yet captured: real Kali configuration/dashboard |
-| Register CNSA/CNSB (4) | Normal signup supports required usernames | Registration/auth integration covers equivalent real registration flows | Not yet captured: create the exact two usernames on VM |
-| Authenticate both (4) | Password-hash login and protected dashboard | Auth integration implemented; CI result pending | Not yet captured: log in as each actual account |
-| Additional form POST/retrieval (4) | Requests, detail, ownership and history pages | Database integration implemented; CI result pending | Not yet captured: submit and retrieve on VM |
+| Signup/login pages pushed and cloned (3) | `public/signup.php`, `public/login.php`; Git remote configured | **CI passed** (service-level auth integration; browser pages not exercised) | Not yet captured: clone and browser pages |
+| Install/configure MariaDB (1) | `scripts/setup-kali.sh`, migrations | **CI passed** against MariaDB 11 service | Not yet captured: Kali service status and setup |
+| Create CAT2 database (1) | `database/migrations/001_schema.sql` and migration runner | **CI passed**; all four migrations applied | Not yet captured: Kali `SHOW DATABASES`, tables |
+| PHP to DB connection (3) | PDO config in `config/db.php` | **CI passed**; PDO integration against MariaDB | Not yet captured: Kali configuration/dashboard |
+| Register CNSA/CNSB (4) | Normal signup supports required usernames | **CI passed** for registration service/unique constraints; exact required usernames remain VM demonstration data | Not yet captured: create the exact two usernames on VM |
+| Authenticate both (4) | Password-hash login and protected dashboard | **CI passed** for login, invalid login and throttling using isolated test accounts | Not yet captured: log in as each actual account |
+| Additional form POST/retrieval (4) | Requests, detail, ownership and history pages | **CI passed** for DB insert, recommendation, SLA, history, owner scoping and status notification | Not yet captured: submit/retrieve in Kali browser |
 | Lessons/challenges (2) | `README.md`, this checklist | Not applicable | Write your own actual reflection after the VM run |
 
 The “Automated test” column is only complete after a recorded passing CI run or a local run with the test database configured. The VM evidence column remains incomplete until screenshots are taken from the actual Kali VM.

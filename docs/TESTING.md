@@ -2,6 +2,8 @@
 
 Use `bash scripts/test.sh` for PHP lint, CSRF/role unit checks, and MariaDB integration tests. Configure `TEST_DB_HOST`, `TEST_DB_NAME`, `TEST_DB_USER`, and `TEST_DB_PASS`; apply schema with `php scripts/migrate.php` first. GitHub Actions runs these against an isolated MariaDB service. Use a separate disposable CAT2 database and browser for the manual checks below. Do not use production personal data.
 
+Current result: GitHub Actions **passed** for commit `368c4f6` on PHP 8.2 and MariaDB 11. This confirms code and integration behavior in CI; it does not confirm Kali VM screenshots, public hosting, DNS or HTTPS.
+
 1. Apply migrations 001–004. Register `studentCNSA` and `studentCNSB`; confirm distinct real records and non-plaintext password hashes.
 2. Retry a duplicate username/email, malformed email, mismatched passwords and a short password. Confirm validation blocks each.
 3. Test valid login, invalid login and repeated-failure throttling.
