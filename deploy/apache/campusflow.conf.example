@@ -1,17 +1,59 @@
-# Substitute owned hostnames and absolute deployment path.
+# Adapt real hostnames and paths. Enable ssl, headers; validate with apachectl configtest.
+SSLProtocol -all +TLSv1.2 +TLSv1.3
+<Directory /var/www/campusflow/public>
+    Options -Indexes
+    AllowOverride None
+    Require all granted
+</Directory>
+
 <VirtualHost *:80>
- ServerName example.edu
- ServerAlias www.example.edu
- DocumentRoot /var/www/campusflow/public
- Redirect permanent / https://example.edu/
+    ServerName example.edu
+    ServerAlias www.example.edu
+    Redirect permanent / https://example.edu/
 </VirtualHost>
 <VirtualHost *:80>
- ServerName app.example.edu
- DocumentRoot /var/www/campusflow/public
- Redirect permanent / https://app.example.edu/
+    ServerName app.example.edu
+    Redirect permanent / https://app.example.edu/
 </VirtualHost>
 <VirtualHost *:80>
- ServerName admin.example.edu
- DocumentRoot /var/www/campusflow/public
- Redirect permanent / https://admin.example.edu/
+    ServerName admin.example.edu
+    Redirect permanent / https://admin.example.edu/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName example.edu
+    ServerAlias www.example.edu
+    DocumentRoot /var/www/campusflow/public
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/private/campusflow-key.pem
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "DENY"
+    ErrorLog ${APACHE_LOG_DIR}/campusflow-error.log
+    CustomLog ${APACHE_LOG_DIR}/campusflow-access.log combined
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName app.example.edu
+    DocumentRoot /var/www/campusflow/public
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/private/campusflow-key.pem
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "DENY"
+    ErrorLog ${APACHE_LOG_DIR}/campusflow-app-error.log
+    CustomLog ${APACHE_LOG_DIR}/campusflow-app-access.log combined
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName admin.example.edu
+    DocumentRoot /var/www/campusflow/public
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/private/campusflow-key.pem
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "DENY"
+    ErrorLog ${APACHE_LOG_DIR}/campusflow-admin-error.log
+    CustomLog ${APACHE_LOG_DIR}/campusflow-admin-access.log combined
 </VirtualHost>

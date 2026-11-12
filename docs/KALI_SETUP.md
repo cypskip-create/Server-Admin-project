@@ -28,6 +28,7 @@ cd ~/campusflow
 cp .env.example .env
 nano .env
 mariadb -u campusflow -p CAT2 < database/migrations/001_schema.sql
+mariadb -u campusflow -p CAT2 < database/migrations/002_login_attempts.sql
 sudo tee /etc/apache2/sites-available/campusflow.conf >/dev/null <<'EOF'
 <VirtualHost *:80>
   ServerName campusflow.local
