@@ -1,8 +1,8 @@
 # Manual end-to-end verification
 
-Use a disposable local CAT2 database and browser. Do not use production personal data.
+Use `bash scripts/test.sh` for PHP lint, CSRF/role unit checks, and MariaDB integration tests. Configure `TEST_DB_HOST`, `TEST_DB_NAME`, `TEST_DB_USER`, and `TEST_DB_PASS`; apply schema with `php scripts/migrate.php` first. GitHub Actions runs these against an isolated MariaDB service. Use a separate disposable CAT2 database and browser for the manual checks below. Do not use production personal data.
 
-1. Import migrations 001 and 002. Register `studentCNSA` and `studentCNSB`; confirm distinct real records and non-plaintext password hashes.
+1. Apply migrations 001–004. Register `studentCNSA` and `studentCNSB`; confirm distinct real records and non-plaintext password hashes.
 2. Retry a duplicate username/email, malformed email, mismatched passwords and a short password. Confirm validation blocks each.
 3. Test valid login, invalid login and repeated-failure throttling.
 4. Confirm anonymous visits to dashboard, requests, profile and request form redirect to sign-in. Sign out and confirm session access is removed.

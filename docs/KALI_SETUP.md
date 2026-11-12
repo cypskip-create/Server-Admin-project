@@ -1,49 +1,27 @@
 # Kali Linux setup
 
-From a clean Kali VM (replace `<repo-url>` after creating the remote):
+Clone the repo into `/var/www/campusflow` on the Kali VM, then run the setup script from a sudo-enabled normal account:
 
 ```bash
-sudo apt update
-sudo apt install -y apache2 mariadb-server php libapache2-mod-php php-mysql php-mbstring php-xml git
-sudo systemctl enable --now apache2 mariadb
-sudo mariadb-secure-installation
-sudo mariadb
+sudo apt-get update
+sudo apt-get install -y git
+sudo git clone https://github.com/cypskip-create/Server-Admin-project.git /var/www/campusflow
+sudo chown -R "$USER":www-data /var/www/campusflow
+cd /var/www/campusflow
+bash scripts/setup-kali.sh
 ```
 
-In MariaDB, create the CAT2 database and least-privilege app user (use your own strong password):
+The script installs Apache, MariaDB and required PHP packages; creates `CAT2` and a restricted app user; applies all four migrations using a migration ledger; writes `.env` without committing it; configures Apache and a local `campusflow.local` host; then checks Apache configuration and the landing-page HTTP response. If your VM has a custom MariaDB root password instead of socket authentication, adapt the migration invocation inside the script before running it.
 
-```sql
-CREATE DATABASE CAT2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'campusflow'@'localhost' IDENTIFIED BY 'REPLACE_WITH_STRONG_PASSWORD';
-GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX ON CAT2.* TO 'campusflow'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-Clone and configure (web root must point at `public/`):
+Check services and schema:
 
 ```bash
-git clone <repo-url> ~/campusflow
-cd ~/campusflow
-cp .env.example .env
-nano .env
-mariadb -u campusflow -p CAT2 < database/migrations/001_schema.sql
-mariadb -u campusflow -p CAT2 < database/migrations/002_login_attempts.sql
-sudo tee /etc/apache2/sites-available/campusflow.conf >/dev/null <<'EOF'
-<VirtualHost *:80>
-  ServerName campusflow.local
-  DocumentRoot /home/student/campusflow/public
-  <Directory /home/student/campusflow/public>
-    AllowOverride All
-    Require all granted
-  </Directory>
-  ErrorLog ${APACHE_LOG_DIR}/campusflow-error.log
-  CustomLog ${APACHE_LOG_DIR}/campusflow-access.log combined
-</VirtualHost>
-EOF
-sudo a2enmod rewrite
-sudo a2ensite campusflow
-sudo systemctl reload apache2
+sudo systemctl status apache2 mariadb --no-pager
+sudo mariadb CAT2 -e 'SHOW TABLES; SELECT migration,applied_at FROM schema_migrations ORDER BY migration;'
+curl -I -H 'Host: campusflow.local' http://127.0.0.1/
+curl -I -H 'Host: app.campusflow.local' http://127.0.0.1/login.php
 ```
 
-Change `student` to the actual account; add `127.0.0.1 campusflow.local` to `/etc/hosts`. Then visit `http://campusflow.local/signup.php` and register `studentCNSA` and `studentCNSB`. Inspect records with `SELECT username,password_hash FROM users;` (hashes should start with a supported password-hash prefix, never plaintext). Logs: `/var/log/apache2/campusflow-error.log` and `journalctl -u mariadb`.
+Then open `http://campusflow.local/signup.php` in the VM browser and register `studentCNSA` and `studentCNSB` through the actual form. Log in as each account, submit a service request, open its detail timeline and record real screenshots per `CAT2_CHECKLIST.md`. To check an actual stored hash, use `SELECT username,password_hash FROM users;` on the test VM and redact the hash from submitted evidence.
+
+Logs: `/var/log/apache2/campusflow-error.log` and `sudo journalctl -u mariadb`. If setup fails, inspect the exact failing command, keep `.env` secret, and rerun only after understanding whether a migration was recorded.

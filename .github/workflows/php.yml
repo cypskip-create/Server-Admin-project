@@ -1,0 +1,47 @@
+name: PHP checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: CAT2
+          MARIADB_USER: campusflow
+          MARIADB_PASSWORD: campusflow-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql
+      - name: Apply schema migrations
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: CAT2
+          DB_USER: campusflow
+          DB_PASS: campusflow-test
+        run: php scripts/migrate.php
+      - name: Run syntax, security and database tests
+        env:
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_NAME: CAT2
+          TEST_DB_USER: campusflow
+          TEST_DB_PASS: campusflow-test
+        run: |
+          bash -n scripts/setup-kali.sh scripts/deploy-ubuntu.sh scripts/issue-zerossl.sh scripts/test.sh
+          bash scripts/test.sh
