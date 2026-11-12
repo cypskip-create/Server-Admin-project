@@ -1,0 +1,2 @@
+<?php
+function db(): PDO { static $pdo=null; if ($pdo) return $pdo; $name=preg_replace('/[^A-Za-z0-9_]/','',(string)cfg('DB_NAME','CAT2')); $pdo=new PDO('mysql:host='.cfg('DB_HOST','127.0.0.1').';port='.cfg('DB_PORT','3306').';dbname='.$name.';charset=utf8mb4', (string)cfg('DB_USER','root'), (string)cfg('DB_PASS',''), [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]); return $pdo; }

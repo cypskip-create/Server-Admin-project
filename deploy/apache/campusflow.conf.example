@@ -1,0 +1,17 @@
+# Substitute owned hostnames and absolute deployment path.
+<VirtualHost *:80>
+ ServerName example.edu
+ ServerAlias www.example.edu
+ DocumentRoot /var/www/campusflow/public
+ Redirect permanent / https://example.edu/
+</VirtualHost>
+<VirtualHost *:80>
+ ServerName app.example.edu
+ DocumentRoot /var/www/campusflow/public
+ Redirect permanent / https://app.example.edu/
+</VirtualHost>
+<VirtualHost *:80>
+ ServerName admin.example.edu
+ DocumentRoot /var/www/campusflow/public
+ Redirect permanent / https://admin.example.edu/
+</VirtualHost>

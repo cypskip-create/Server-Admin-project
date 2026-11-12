@@ -1,0 +1,1 @@
+<?php require __DIR__.'/_init.php'; if($_SERVER['REQUEST_METHOD']!=='POST'){page_start('Sign out');?><section class="form-wrap"><h1>Sign out?</h1><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><button class="button">Sign out</button></form></section><?php page_end();exit;}check_csrf();$_SESSION=[];session_destroy();header('Location: /');

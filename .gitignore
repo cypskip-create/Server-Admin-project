@@ -1,0 +1,5 @@
+/vendor/
+.env
+*.log
+/deploy/ssl/*.pem
+/deploy/ssl/*.key

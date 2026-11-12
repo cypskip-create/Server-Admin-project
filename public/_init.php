@@ -1,0 +1,4 @@
+<?php
+require_once dirname(__DIR__).'/config/bootstrap.php';
+function page_start(string $title): void { $msg=$_SESSION['flash']??''; unset($_SESSION['flash']); echo '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.e($title).' · CampusFlow</title><link rel="stylesheet" href="/assets/style.css"><body><header><a class="brand" href="/">Campus<span>Flow</span></a><nav><a href="/">Home</a>'.(empty($_SESSION['user'])?'<a href="/login.php">Sign in</a><a class="button small" href="/signup.php">Create account</a>':'<a href="/dashboard.php">Dashboard</a><a href="/requests.php">Requests</a>'.(($_SESSION['user']['role']??'')==='admin'?'<a href="/admin.php">Admin</a>':'').'<a href="/logout.php">Sign out</a>').'</nav></header><main>'.($msg?'<p class="notice">'.e($msg).'</p>':''); }
+function page_end(): void { echo '</main><footer>CampusFlow · Student services, made simpler</footer></body></html>'; }

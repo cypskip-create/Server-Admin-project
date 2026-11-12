@@ -1,0 +1,17 @@
+CREATE TABLE IF NOT EXISTS users (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, full_name VARCHAR(120) NOT NULL, username VARCHAR(40) NOT NULL UNIQUE,
+ email VARCHAR(190) NOT NULL UNIQUE, student_number VARCHAR(40) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,
+ role ENUM('student','admin') NOT NULL DEFAULT 'student', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS service_requests (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, tracking_id VARCHAR(24) NOT NULL UNIQUE, user_id BIGINT UNSIGNED NOT NULL,
+ category VARCHAR(40) NOT NULL, title VARCHAR(120) NOT NULL, description TEXT NOT NULL,
+ priority ENUM('low','normal','high') NOT NULL DEFAULT 'normal', status ENUM('submitted','in_review','in_progress','completed','declined') NOT NULL DEFAULT 'submitted',
+ expected_days SMALLINT UNSIGNED NOT NULL DEFAULT 5, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ CONSTRAINT fk_request_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX idx_user_created(user_id,created_at), INDEX idx_status(status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS request_status_history (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, request_id BIGINT UNSIGNED NOT NULL, changed_by BIGINT UNSIGNED NOT NULL,
+ old_status VARCHAR(24), new_status VARCHAR(24) NOT NULL, note VARCHAR(255), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(request_id) REFERENCES service_requests(id) ON DELETE CASCADE, FOREIGN KEY(changed_by) REFERENCES users(id), INDEX(request_id,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
