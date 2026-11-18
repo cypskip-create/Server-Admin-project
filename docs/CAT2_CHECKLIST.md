@@ -25,4 +25,5 @@ Status meanings: **Implemented** means repository code or explanation exists; **
 
 ## Current evidence boundary
 
-GitHub Actions run [44398099946](https://github.com/cypskip-create/Server-Admin-project/actions/runs/44398099946) passed the PHP lint, security, MariaDB integration and Bash syntax checks for commit `917a591`. The Azure production integration suite also passed. **No Kali VM session or screenshots were captured in this deployment**, so the Kali-specific evidence items remain open until the students perform those steps on Kali.
+GitHub Actions run [44414494877](https://github.com/cypskip-create/Server-Admin-project/actions/runs/44414494877) passed the PHP syntax, security, MariaDB integration and Bash syntax checks for commit `2dca2e0`. The Azure production integration suite also passed. **No Kali VM session or screenshots were captured in this deployment**, so the Kali-specific evidence items remain open until the students perform those steps on Kali.
+

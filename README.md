@@ -24,10 +24,11 @@ The first account is not automatically an administrator. To grant admin access o
 
 ## Azure domain and deployment
 
-The domain is `fuadsaary.me`: the apex serves the landing page, `www` redirects to the apex, `students` serves the student app, and `admin` serves the role-checked admin portal. The application runs on the existing Azure VM with a separate `campusflow_prod` database; CAT2 uses its own `CAT2` database. Namecheap A/CNAME records resolve publicly to the Azure static IP and independent HTTP probes reached all four virtual hosts. The Azure NSG allows approved HTTP and HTTPS ports, while SSH remains source-restricted. HTTPS is not installed yet. See `docs/DNS_CONFIGURATION.md`, `docs/CLOUD_DEPLOYMENT.md`, and `docs/SSL_CONFIGURATION.md` for current results and remaining steps.
+The domain is `fuadsaary.me`: the apex serves the landing page, `www` redirects to the apex, `students` serves the student app, and `admin` serves the role-checked admin portal. The application runs on the existing Azure VM with a separate `campusflow_prod` database; CAT2 uses its own `CAT2` database. Namecheap A/CNAME records resolve publicly to the Azure static IP and all four virtual hosts passed public HTTPS smoke checks. The Azure NSG allows approved HTTP and HTTPS ports, while SSH remains source-restricted. See `docs/DNS_CONFIGURATION.md`, `docs/CLOUD_DEPLOYMENT.md`, and `docs/SSL_CONFIGURATION.md` for verified results and remaining assessment evidence.
 
-The approved TLS route is free ZeroSSL ACME with a 90-day multi-domain certificate and automated renewal. The rubric's “six-month trial” wording does not match this free ACME validity; confirm any different entitlement before claiming six months. `docs/DEPLOYMENT_EVIDENCE.md`, `docs/PROJECT_CHECKLIST.md`, and `docs/CAT2_CHECKLIST.md` separate implemented code, passed tests, externally verified deployment, and student-captured evidence.
+The deployed TLS certificate uses free ZeroSSL ACME, covers the apex plus `www`, `students`, and `admin`, and expires on 2027-02-16. Automated renewal and Apache reload are configured. The rubric's “six-month trial” wording does not match this free ACME certificate's 90-day validity; do not claim six months. `docs/DEPLOYMENT_EVIDENCE.md`, `docs/PROJECT_CHECKLIST.md`, and `docs/CAT2_CHECKLIST.md` separate implemented code, passed tests, externally verified deployment, and student-captured evidence.
 
 ## Automated checks
 
 Run `bash scripts/test.sh`. It performs PHP syntax checks, CSRF/authorization unit checks, then MariaDB integration checks when `TEST_DB_HOST`, `TEST_DB_NAME`, and `TEST_DB_USER` are configured. GitHub Actions provisions MariaDB and runs the full suite. Local syntax/unit results do not verify a VM, VPS, DNS or HTTPS deployment.
+

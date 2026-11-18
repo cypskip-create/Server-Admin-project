@@ -28,7 +28,7 @@ The deployed database contains `login_attempts`, `notifications`, `request_statu
 | `students.fuadsaary.me` | Student portal | `302` to `/login.php` when anonymous; signup page returns `200` |
 | `admin.fuadsaary.me` | Administration portal | Anonymous access redirects to login; admin routes enforce authorization |
 
-`apachectl configtest` returned `Syntax OK`. Requests made locally with the matching `Host` header passed, and independent Check-Host probes from several regions returned `200` for the apex, `301` for `www`, and `302` for `students` and `admin`. These are HTTP checks; HTTPS has not been issued or enabled yet.
+`apachectl configtest` returned `Syntax OK`. Requests made locally with the matching `Host` header passed, and independent Check-Host probes from several regions returned `200` for the apex, `301` for `www`, and `302` for `students` and `admin`. After TLS setup, all four HTTPS endpoints were checked from the VM and the sandbox browser; anonymous student/admin routes reach the login page.
 
 ## DNS and Azure networking
 
@@ -43,7 +43,7 @@ Namecheap Advanced DNS contains:
 
 The existing email-forwarding setting and SPF record were left unchanged; nameservers were not changed. Google Public DNS checks and independent public probes resolved all required names to the Azure IP. See `DNS_CONFIGURATION.md` and `DEPLOYMENT_EVIDENCE.md` for the dated results.
 
-With the user's approval, the existing `cyprianServer-nsg` now allows inbound TCP 80 and 443 from Internet. Existing SSH rule `default-allow-ssh` remains restricted to its previous source (`197.232.165.94`); no database port was opened. The VM remains Running. Port 443 is allowed at the NSG, but Apache is not yet serving TLS until the certificate stage completes.
+With the user's approval, the existing `cyprianServer-nsg` allows inbound TCP 80 and 443 from Internet. Existing SSH rule `default-allow-ssh` remains restricted to its previous source (`197.232.165.94`); no database port was opened. The VM remained Running during deployment. Apache now serves TLS on 443 and redirects all four HTTP hostnames to HTTPS; `www` then redirects to the apex.
 
 ## Reproduction and verification commands
 
@@ -68,10 +68,13 @@ sudo mariadb campusflow_prod -e 'SHOW TABLES; SELECT migration,applied_at FROM s
 sudo mariadb campusflow_prod -e 'SHOW COLUMNS FROM login_attempts;'
 ```
 
-The deployed PHP lint, security checks, and MariaDB integration suite passed using `bash scripts/test.sh`; the GitHub Actions run for commit `917a591` also passed. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md`.
+The deployed PHP lint, security checks, and MariaDB integration suite passed using `bash scripts/test.sh`; the GitHub Actions run for commit `2dca2e0` also passed. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md`.
 
-## Remaining: free ZeroSSL ACME
+## Free ZeroSSL ACME deployment result
 
-No ZeroSSL certificate is installed. The approved free route is ZeroSSL ACME with a 90-day SAN certificate for all four names. It does not create an annual/premium order. The account must have a monitored contact email. `scripts/issue-zerossl.sh` installs the certificate, enables the TLS vhost, verifies hostname coverage and redirects, sets secure cookies only after the checks pass, and installs a renewal schedule. Review `SSL_CONFIGURATION.md` before running it. The script uses an ephemeral RAM-backed registration client so EAB values are not written to the ACME config or passed as command-line arguments.
+The approved free route issued one 90-day SAN certificate for all four names without creating an annual/premium order. Certificate validity and SANs, public HTTPS routes, HTTP-to-HTTPS redirects, Secure session cookies, HSTS, and the root ACME cron and Apache reload hook were verified. EAB values were not written to `ca.conf`. The repository's `scripts/issue-zerossl.sh` uses an ephemeral RAM-backed registration client; see `SSL_CONFIGURATION.md` for checks and the validity mismatch with the rubric's six-month trial wording. A future renewal cycle has not yet occurred.
+
+The initial ACME attempt stopped before registration because of an upstream acme.sh code-shape change. After changing the temporary EAB persistence guard to use no-ops and verifying shell syntax, certificate issuance and all checks passed. The Azure Run Command also reported a trailing carriage-return error after the success message; the repository script was normalized to LF in commit `2dca2e0`, CI passed, and independent read-only checks confirmed the live TLS setup.
 
 Before each release, back up the application database and record the deployed Git SHA. Roll back code to the previous verified SHA and restore a matching database backup if a migration needs rollback; do not blindly reverse data migrations.
+

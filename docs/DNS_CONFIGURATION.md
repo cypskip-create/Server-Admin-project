@@ -15,7 +15,7 @@ The Azure VM DNS label does not update the registrar zone. Namecheap BasicDNS re
 
 ## Verification actually performed
 
-On 2026-11-19, Google Public DNS checks returned `102.37.155.177` for A queries of the apex, `students`, `admin`, and `www`; the `www` CNAME resolves to the apex. Independent Check-Host probes reached the VM from multiple regions: apex HTTP `200`, `www` HTTP `301`, `students` HTTP `302`, and `admin` HTTP `302`. The redirects are expected for the alias and anonymous portal routes. The public HTTP evidence is recorded in `DEPLOYMENT_EVIDENCE.md`.
+On 2026-11-19, Google Public DNS checks returned `102.37.155.177` for A queries of the apex, `students`, `admin`, and `www`; the `www` CNAME resolves to the apex. Independent Check-Host probes reached the VM from multiple regions: apex HTTP `200`, `www` HTTP `301`, `students` HTTP `302`, and `admin` HTTP `302`. After the ZeroSSL certificate was installed, a public browser also loaded the apex, student login, and admin login routes successfully over HTTPS; `www` redirected to the apex. The redirects are expected for the alias and anonymous portal routes. The public evidence is recorded in `DEPLOYMENT_EVIDENCE.md`.
 
 Repeat the checks with:
 
@@ -30,4 +30,5 @@ dig @8.8.8.8 +short A www.fuadsaary.me
 
 The expected result for the three A records is `102.37.155.177`; `www` should be a CNAME to `fuadsaary.me` and resolve to that same IPv4. If the static Public IP resource is replaced, update the A records and repeat independent DNS and HTTP checks. Do not remove or replace email records when editing this zone.
 
-TLS has not yet been installed. Do not count DNS/HTTP checks as HTTPS evidence; see `SSL_CONFIGURATION.md` for the pending ZeroSSL certificate stage.
+TLS is installed for all four names. The HTTPS certificate and redirect results are documented in `SSL_CONFIGURATION.md` and `DEPLOYMENT_EVIDENCE.md`; DNS resolution alone is not the certificate evidence.
+
