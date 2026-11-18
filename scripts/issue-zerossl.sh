@@ -112,6 +112,38 @@ if ! apachectl configtest; then
 fi
 systemctl reload apache2
 
+python3 - "$env_file" "$domain" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+domain = sys.argv[2]
+content = path.read_text()
+
+secure_values = re.findall(r'^SESSION_SECURE=(true|false)$', content, flags=re.MULTILINE)
+if secure_values == ['false']:
+    content = re.sub(r'^SESSION_SECURE=false$', 'SESSION_SECURE=true', content, count=1, flags=re.MULTILINE)
+elif secure_values != ['true']:
+    raise SystemExit('Expected one valid SESSION_SECURE setting; manual review is required.')
+
+app_pattern = re.compile(r'^APP_URL=(https?)://students\.' + re.escape(domain) + r'(/[^\r\n]*)?$', re.MULTILINE)
+matches = list(app_pattern.finditer(content))
+if len(matches) != 1:
+    raise SystemExit('Expected one APP_URL for the configured students host; manual review is required.')
+match = matches[0]
+if match.group(1) == 'http':
+    content = content[:match.start()] + 'APP_URL=https://students.' + domain + (match.group(2) or '') + content[match.end():]
+
+temporary = path.with_suffix('.env.tmp')
+temporary.write_text(content)
+temporary.chmod(0o640)
+temporary.replace(path)
+PY
+chown root:www-data "$env_file"
+chmod 640 "$env_file"
+systemctl reload apache2
+
 cert=/etc/ssl/certs/campusflow-fullchain.pem
 openssl x509 -in "$cert" -checkend 86400 -noout
 san="$(openssl x509 -in "$cert" -noout -ext subjectAltName)"
@@ -129,32 +161,10 @@ done
 
 session_headers="$(curl --silent --show-error -D - -o /dev/null "https://students.$domain/login.php")"
 grep -Eiq '^Set-Cookie:.*;[[:space:]]*secure([;[:space:]]|$)' <<<"$session_headers" || {
-  echo 'Student login response did not set a Secure session cookie; SESSION_SECURE was not changed.' >&2
+  echo 'Student login response did not set a Secure session cookie after enabling SESSION_SECURE.' >&2
   exit 1
 }
 grep -Eiq '^Strict-Transport-Security:' <<<"$session_headers" || { echo 'HSTS header missing on student host.' >&2; exit 1; }
-
-python3 - "$env_file" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-path = Path(sys.argv[1])
-content = path.read_text()
-updated, count = re.subn(r'^SESSION_SECURE=false$', 'SESSION_SECURE=true', content, flags=re.MULTILINE)
-if count != 1:
-    raise SystemExit('Expected exactly one SESSION_SECURE=false setting; manual review is required.')
-updated, app_count = re.subn(r'^APP_URL=http://students\.[^\r\n]+$', lambda match: match.group(0).replace('http://', 'https://', 1), updated, flags=re.MULTILINE)
-if app_count != 1:
-    raise SystemExit('Expected exactly one HTTP students APP_URL; manual review is required.')
-temporary = path.with_suffix('.env.tmp')
-temporary.write_text(updated)
-temporary.chmod(0o640)
-temporary.replace(path)
-PY
-chown root:www-data "$env_file"
-chmod 640 "$env_file"
-systemctl reload apache2
 
 if ! crontab -u root -l 2>/dev/null | grep -Fq -- '--cron'; then
   "$acme" --install-cronjob
@@ -163,3 +173,4 @@ crontab -u root -l | grep -F -- '--cron'
 echo '--- ZeroSSL certificate ---'
 openssl x509 -in "$cert" -noout -subject -issuer -dates -ext subjectAltName
 echo 'HTTPS, HTTP redirects, hostname SANs, HSTS, Secure session cookie and renewal cron configuration passed.'
+
