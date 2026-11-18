@@ -1,36 +1,123 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ "$(id -u)" -eq 0 ]] || { echo 'Run with sudo after the HTTP vhost is active.' >&2;exit 1; }
-domain="${1:-}";email="${2:-}";[[ "$domain" =~ ^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$ && "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo 'Usage: sudo scripts/issue-zerossl.sh real-domain.example admin@example.edu' >&2;exit 2; }
-acme="$(command -v acme.sh || true)";if [[ -z "$acme" && -x /root/.acme.sh/acme.sh ]];then acme=/root/.acme.sh/acme.sh;fi;[[ -n "$acme" ]] || { echo 'Install acme.sh as root first; see docs/SSL_CONFIGURATION.md.' >&2;exit 1; }
-read -rsp 'ZeroSSL EAB KID: ' eab_kid;echo;read -rsp 'ZeroSSL EAB HMAC key: ' eab_hmac;echo
-[[ -n "$eab_kid" && -n "$eab_hmac" ]] || { echo 'EAB credentials are required.' >&2;exit 1; }
+umask 077
+
+[[ "$(id -u)" -eq 0 ]] || { echo 'Run with sudo after the HTTP vhost and DNS are ready.' >&2; exit 1; }
+domain="${1:-}"
+email="${2:-}"
+[[ "$domain" =~ ^([A-Za-z0-9-]+\.)+[A-Za-z]{2,}$ && "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || {
+  echo 'Usage: sudo bash scripts/issue-zerossl.sh fuadsaary.me contact@example.com' >&2
+  exit 2
+}
+domain="${domain,,}"
+hosts=("$domain" "www.$domain" "students.$domain" "admin.$domain")
 app_dir=/var/www/campusflow
+apache_site=/etc/apache2/sites-available/campusflow.conf
+env_file="$app_dir/.env"
+template="$app_dir/deploy/apache/campusflow.conf.example"
+acme="$(command -v acme.sh || true)"
+if [[ -z "$acme" && -x /root/.acme.sh/acme.sh ]]; then acme=/root/.acme.sh/acme.sh; fi
+[[ -n "$acme" ]] || { echo 'Install acme.sh as root first; see docs/SSL_CONFIGURATION.md.' >&2; exit 1; }
+[[ -f "$apache_site" && -f "$env_file" && -f "$template" ]] || { echo 'CampusFlow HTTP deployment is incomplete.' >&2; exit 1; }
+for required in "MAIN_HOST=$domain" "STUDENTS_HOST=students.$domain" "ADMIN_HOST=admin.$domain"; do
+  grep -Fxq "$required" "$env_file" || { echo "Expected $required in $env_file." >&2; exit 1; }
+done
+
+for host in "${hosts[@]}"; do
+  getent ahostsv4 "$host" >/dev/null || { echo "DNS A/AAAA lookup failed for $host; publish the DNS records first." >&2; exit 1; }
+done
+[[ "$(apachectl -t 2>&1)" == *'Syntax OK'* ]] || apachectl configtest
+
+read -rsp 'ZeroSSL EAB KID: ' eab_kid; echo
+read -rsp 'ZeroSSL EAB HMAC key: ' eab_hmac; echo
+[[ -n "$eab_kid" && -n "$eab_hmac" ]] || { echo 'EAB credentials are required.' >&2; exit 1; }
+
+backup_dir="/root/campusflow-backups/$(date -u +%Y%m%dT%H%M%SZ)-zerossl"
+install -d -o root -g root -m 700 "$backup_dir"
+cp -a "$apache_site" "$backup_dir/campusflow.conf-before-tls"
+chmod 600 "$backup_dir/campusflow.conf-before-tls"
+echo "CampusFlow Apache configuration backup: $backup_dir/campusflow.conf-before-tls"
+
 "$acme" --set-default-ca --server zerossl
 "$acme" --register-account --server zerossl --eab-kid "$eab_kid" --eab-hmac-key "$eab_hmac" -m "$email"
 unset eab_kid eab_hmac
-"$acme" --issue --server zerossl --webroot "$app_dir/public" -d "$domain" -d "www.$domain" -d "app.$domain" -d "admin.$domain"
-install -o root -g root -m 755 -d /etc/ssl/certs
-install -o root -g www-data -m 750 -d /etc/ssl/private
-sudo touch /etc/ssl/private/campusflow-key.pem /etc/ssl/certs/campusflow-fullchain.pem
-sudo chown root:www-data /etc/ssl/private/campusflow-key.pem;sudo chmod 640 /etc/ssl/private/campusflow-key.pem
-sudo chown root:root /etc/ssl/certs/campusflow-fullchain.pem;sudo chmod 644 /etc/ssl/certs/campusflow-fullchain.pem
-"$acme" --install-cert -d "$domain" --key-file /etc/ssl/private/campusflow-key.pem --fullchain-file /etc/ssl/certs/campusflow-fullchain.pem --reloadcmd 'systemctl reload apache2'
-sudo sed "s/example\.edu/$domain/g" "$app_dir/deploy/apache/campusflow.conf.example" | sudo tee /etc/apache2/sites-available/campusflow.conf >/dev/null
-sudo python3 - "$app_dir/.env" <<'PY'
+issue_args=(--issue --server zerossl --webroot "$app_dir/public")
+for host in "${hosts[@]}"; do issue_args+=(-d "$host"); done
+"$acme" "${issue_args[@]}"
+
+install -d -o root -g root -m 755 /etc/ssl/certs
+install -d -o root -g www-data -m 750 /etc/ssl/private
+"$acme" --install-cert -d "$domain" \
+  --key-file /etc/ssl/private/campusflow-key.pem \
+  --fullchain-file /etc/ssl/certs/campusflow-fullchain.pem \
+  --reloadcmd 'systemctl reload apache2'
+chown root:www-data /etc/ssl/private/campusflow-key.pem
+chmod 640 /etc/ssl/private/campusflow-key.pem
+chown root:root /etc/ssl/certs/campusflow-fullchain.pem
+chmod 644 /etc/ssl/certs/campusflow-fullchain.pem
+
+rendered="$(mktemp /etc/apache2/sites-available/campusflow.XXXXXX)"
+sed "s|@DOMAIN@|$domain|g" "$template" > "$rendered"
+chown root:root "$rendered"
+chmod 640 "$rendered"
+mv "$rendered" "$apache_site"
+a2enmod alias headers ssl >/dev/null
+if ! apachectl configtest; then
+  cp -a "$backup_dir/campusflow.conf-before-tls" "$apache_site"
+  apachectl configtest || true
+  echo "TLS vhost rejected; restored the backed-up CampusFlow HTTP config. Backup: $backup_dir" >&2
+  exit 1
+fi
+systemctl reload apache2
+
+cert=/etc/ssl/certs/campusflow-fullchain.pem
+openssl x509 -in "$cert" -checkend 86400 -noout
+san="$(openssl x509 -in "$cert" -noout -ext subjectAltName)"
+for host in "${hosts[@]}"; do
+  grep -Fq "$host" <<<"$san" || { echo "Certificate SAN missing $host." >&2; exit 1; }
+  curl --fail --silent --show-error -I "https://$host/" >/dev/null
+done
+
+for host in "${hosts[@]}"; do
+  expected="https://$host/"
+  [[ "$host" == "www.$domain" ]] && expected="https://$domain/"
+  headers="$(curl --silent --show-error -D - -o /dev/null "http://$host/")"
+  grep -Fqi "Location: $expected" <<<"$headers" || { echo "HTTP to HTTPS redirect failed for $host." >&2; exit 1; }
+done
+
+session_headers="$(curl --silent --show-error -D - -o /dev/null "https://students.$domain/login.php")"
+grep -Eiq '^Set-Cookie:.*;[[:space:]]*secure([;[:space:]]|$)' <<<"$session_headers" || {
+  echo 'Student login response did not set a Secure session cookie; SESSION_SECURE was not changed.' >&2
+  exit 1
+}
+grep -Eiq '^Strict-Transport-Security:' <<<"$session_headers" || { echo 'HSTS header missing on student host.' >&2; exit 1; }
+
+python3 - "$env_file" <<'PY'
 from pathlib import Path
 import re
 import sys
-config = Path(sys.argv[1])
-content = config.read_text()
-if 'SESSION_SECURE=' not in content:
-    raise SystemExit('SESSION_SECURE is missing from .env; update it manually after verifying file permissions.')
-config.write_text(re.sub(r'^SESSION_SECURE=.*$', 'SESSION_SECURE=true', content, flags=re.MULTILINE))
+
+path = Path(sys.argv[1])
+content = path.read_text()
+updated, count = re.subn(r'^SESSION_SECURE=false$', 'SESSION_SECURE=true', content, flags=re.MULTILINE)
+if count != 1:
+    raise SystemExit('Expected exactly one SESSION_SECURE=false setting; manual review is required.')
+updated, app_count = re.subn(r'^APP_URL=http://students\.[^\r\n]+$', lambda match: match.group(0).replace('http://', 'https://', 1), updated, flags=re.MULTILINE)
+if app_count != 1:
+    raise SystemExit('Expected exactly one HTTP students APP_URL; manual review is required.')
+temporary = path.with_suffix('.env.tmp')
+temporary.write_text(updated)
+temporary.chmod(0o640)
+temporary.replace(path)
 PY
-sudo chown root:www-data "$app_dir/.env";sudo chmod 640 "$app_dir/.env"
-sudo apachectl configtest;sudo systemctl reload apache2
-curl --fail --silent --show-error -I "https://$domain/" >/dev/null
-curl --fail --silent --show-error -I "https://www.$domain/" >/dev/null
-curl --fail --silent --show-error -I "https://app.$domain/login.php" >/dev/null
-curl --fail --silent --show-error -I "https://admin.$domain/admin.php" >/dev/null
-echo 'Certificate issued/installed and host HTTP checks passed. Confirm renewal with acme.sh --list and inspect each SAN/certificate with openssl s_client.'
+chown root:www-data "$env_file"
+chmod 640 "$env_file"
+systemctl reload apache2
+
+if ! crontab -u root -l 2>/dev/null | grep -Fq -- '--cron'; then
+  "$acme" --install-cronjob
+fi
+crontab -u root -l | grep -F -- '--cron'
+echo '--- ZeroSSL certificate ---'
+openssl x509 -in "$cert" -noout -subject -issuer -dates -ext subjectAltName
+echo 'HTTPS, HTTP redirects, hostname SANs, HSTS, Secure session cookie and renewal cron configuration passed.'

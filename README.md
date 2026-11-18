@@ -22,9 +22,11 @@ The first account is not automatically an administrator. To grant admin access o
 
 `config/` bootstraps sessions and PDO; `database/migrations/` has schema; `public/` is the Apache web root; `docs/` holds Kali, cloud, DNS, SSL, and assessment guidance. Required Linux host packages: Apache, MariaDB server/client, Git, and PHP runtime integration (`libapache2-mod-php` or PHP-FPM); PHP modules such as `php-mysql` are excluded from that list. PHP executes server-side request logic, validates inputs, performs database operations and returns dynamic HTML. Git records changes, GitHub hosts collaboration/remotes, Linux VM hosting runs a continuously managed web server. This is traditional server hosting; serverless platforms run code on managed, event-driven infrastructure without the team administering the underlying server.
 
-## Boundaries
+## Azure domain and deployment
 
-No real domain, cloud host, DNS configuration, ZeroSSL certificate, or team contribution has been fabricated. Review `docs/SSL_CONFIGURATION.md` for the certificate lifetime requirement against current ZeroSSL account terms.
+The supplied deployment domain is `fuadsaary.me`: the apex serves the landing page, `www` redirects to the apex, `students` serves the student app, and `admin` serves the role-checked admin portal. The deploy scripts use the separate production database `campusflow_prod` and do not reuse the CAT2 lab database. See `docs/DNS_CONFIGURATION.md`, `docs/CLOUD_DEPLOYMENT.md` and `docs/SSL_CONFIGURATION.md` for the exact records and staged verification.
+
+The domain was provided by the user. Namecheap currently shows the requested DNS records, and the Azure VM resolver returns the static IP for all four names; independent public resolver checks are still pending. Public HTTP/HTTPS, certificate issuance, browser-based VM testing and team contributions must each be marked complete only after their own evidence is captured. Review the certificate lifetime note in `docs/SSL_CONFIGURATION.md` against the assignment's six-month wording.
 
 ## Automated checks
 

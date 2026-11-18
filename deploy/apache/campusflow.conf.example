@@ -1,5 +1,7 @@
-# Adapt real hostnames and paths. Enable ssl, headers; validate with apachectl configtest.
+# Render @DOMAIN@ before installing at /etc/apache2/sites-available/campusflow.conf.
+# Keep all four virtual hosts in this CampusFlow-owned file; do not disable other sites.
 SSLProtocol -all +TLSv1.2 +TLSv1.3
+
 <Directory /var/www/campusflow/public>
     Options -Indexes
     AllowOverride None
@@ -7,22 +9,24 @@ SSLProtocol -all +TLSv1.2 +TLSv1.3
 </Directory>
 
 <VirtualHost *:80>
-    ServerName example.edu
-    ServerAlias www.example.edu
-    Redirect permanent / https://example.edu/
+    ServerName @DOMAIN@
+    Redirect permanent / https://@DOMAIN@/
 </VirtualHost>
 <VirtualHost *:80>
-    ServerName app.example.edu
-    Redirect permanent / https://app.example.edu/
+    ServerName www.@DOMAIN@
+    Redirect permanent / https://@DOMAIN@/
 </VirtualHost>
 <VirtualHost *:80>
-    ServerName admin.example.edu
-    Redirect permanent / https://admin.example.edu/
+    ServerName students.@DOMAIN@
+    Redirect permanent / https://students.@DOMAIN@/
+</VirtualHost>
+<VirtualHost *:80>
+    ServerName admin.@DOMAIN@
+    Redirect permanent / https://admin.@DOMAIN@/
 </VirtualHost>
 
 <VirtualHost *:443>
-    ServerName example.edu
-    ServerAlias www.example.edu
+    ServerName @DOMAIN@
     DocumentRoot /var/www/campusflow/public
     SSLEngine on
     SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
@@ -31,11 +35,19 @@ SSLProtocol -all +TLSv1.2 +TLSv1.3
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set X-Frame-Options "DENY"
     Header always set Strict-Transport-Security "max-age=31536000"
-    ErrorLog ${APACHE_LOG_DIR}/campusflow-error.log
-    CustomLog ${APACHE_LOG_DIR}/campusflow-access.log combined
+    ErrorLog ${APACHE_LOG_DIR}/campusflow-main-error.log
+    CustomLog ${APACHE_LOG_DIR}/campusflow-main-access.log combined
 </VirtualHost>
 <VirtualHost *:443>
-    ServerName app.example.edu
+    ServerName www.@DOMAIN@
+    Redirect permanent / https://@DOMAIN@/
+    SSLEngine on
+    SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/private/campusflow-key.pem
+    Header always set Strict-Transport-Security "max-age=31536000"
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName students.@DOMAIN@
     DocumentRoot /var/www/campusflow/public
     SSLEngine on
     SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem
@@ -44,11 +56,11 @@ SSLProtocol -all +TLSv1.2 +TLSv1.3
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set X-Frame-Options "DENY"
     Header always set Strict-Transport-Security "max-age=31536000"
-    ErrorLog ${APACHE_LOG_DIR}/campusflow-app-error.log
-    CustomLog ${APACHE_LOG_DIR}/campusflow-app-access.log combined
+    ErrorLog ${APACHE_LOG_DIR}/campusflow-students-error.log
+    CustomLog ${APACHE_LOG_DIR}/campusflow-students-access.log combined
 </VirtualHost>
 <VirtualHost *:443>
-    ServerName admin.example.edu
+    ServerName admin.@DOMAIN@
     DocumentRoot /var/www/campusflow/public
     SSLEngine on
     SSLCertificateFile /etc/ssl/certs/campusflow-fullchain.pem

@@ -1,6 +1,6 @@
 # Kali Linux setup
 
-Clone the repo into `/var/www/campusflow` on the Kali VM, then run the setup script from a sudo-enabled normal account:
+Clone the repo into `/var/www/campusflow` on the Kali VM, then run the setup script from a sudo-enabled normal account. The script backs up existing Apache and MariaDB configuration, refuses to overwrite an existing CampusFlow site, `.env`, CAT2 database, or application database user, and leaves other enabled Apache sites alone.
 
 ```bash
 sudo apt-get update
@@ -19,9 +19,10 @@ Check services and schema:
 sudo systemctl status apache2 mariadb --no-pager
 sudo mariadb CAT2 -e 'SHOW TABLES; SELECT migration,applied_at FROM schema_migrations ORDER BY migration;'
 curl -I -H 'Host: campusflow.local' http://127.0.0.1/
-curl -I -H 'Host: app.campusflow.local' http://127.0.0.1/login.php
+curl -I -H 'Host: students.campusflow.local' http://127.0.0.1/
+curl -I -H 'Host: admin.campusflow.local' http://127.0.0.1/
 ```
 
-Then open `http://campusflow.local/signup.php` in the VM browser and register `studentCNSA` and `studentCNSB` through the actual form. Log in as each account, submit a service request, open its detail timeline and record real screenshots per `CAT2_CHECKLIST.md`. To check an actual stored hash, use `SELECT username,password_hash FROM users;` on the test VM and redact the hash from submitted evidence.
+Then open `http://students.campusflow.local/signup.php` in the VM browser and register `studentCNSA` and `studentCNSB` through the actual form. Log in as each account, submit a service request, open its detail timeline and record real screenshots per `CAT2_CHECKLIST.md`. To check password storage without exposing hashes, run `SELECT username, password_hash <> username AS hash_is_not_username FROM users;` in the test VM and capture only a redacted query result; never include hashes or passwords in submitted evidence.
 
-Logs: `/var/log/apache2/campusflow-error.log` and `sudo journalctl -u mariadb`. If setup fails, inspect the exact failing command, keep `.env` secret, and rerun only after understanding whether a migration was recorded.
+Logs: `/var/log/apache2/campusflow-kali-error.log` and `sudo journalctl -u mariadb`. Backups are stored under `/tmp/campusflow-kali-backups/` with root-only permissions. If setup fails, inspect the exact failing command, keep `.env` secret, and rerun only after understanding which database/schema objects were created.
