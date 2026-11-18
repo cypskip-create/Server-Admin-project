@@ -1,28 +1,31 @@
-# ZeroSSL ACME certificate setup and renewal
+# Free ZeroSSL ACME certificate setup and renewal
 
-ZeroSSL currently documents free ACME issuance as unlimited **90-day** certificates, including multi-domain certificates; that ACME offer does not provide a single six-month certificate. The assignment's “six-month trial” wording therefore needs lecturer clarification or an account-specific product/entitlement check before claiming six months. See [ZeroSSL ACME documentation](https://zerossl.com/documentation/acme) and [ZeroSSL ACME overview](https://zerossl.com/features/acme). This guide makes no claim that a certificate has been issued.
+ZeroSSL's current Free plan offers ACME-issued 90-day certificates at no charge, including multi-domain certificates; no annual/premium certificate is selected by this runbook. The ZeroSSL dashboard currently shows `0 / 3` manual 90-day certificate credits and an unverified account email. The free ACME path is separate from the manual certificate-order wizard. Sources: [ZeroSSL ACME documentation](https://zerossl.com/documentation/acme), [ACME feature details](https://zerossl.com/features/acme), and [Free plan pricing](https://zerossl.com/pricing).
 
-## Before issuance
+The assignment mentions a six-month trial certificate, while the free ACME service issues 90-day certificates. Do not claim six-month validity unless the account shows and issues a separately verified entitlement. No certificate is installed as of this log; HTTP and DNS checks are not proof of HTTPS.
 
-1. Publish the A and CNAME records for `fuadsaary.me`, `www`, `students`, and `admin` as listed in `DNS_CONFIGURATION.md`. Do not publish AAAA without end-to-end IPv6.
-2. Allow inbound TCP 80 and 443 through the cloud firewall and host firewall. Serve the port 80 Apache vhost first (the Ubuntu deployment script does this).
-3. Confirm from an external resolver: `for host in fuadsaary.me www.fuadsaary.me students.fuadsaary.me admin.fuadsaary.me; do dig +short A "$host"; done` and check `curl -I http://students.fuadsaary.me/.well-known/acme-challenge/check` (a 404 for the deliberately nonexistent token is expected; it confirms the hostname reaches Apache).
-4. Install a current acme.sh client from its [official repository](https://github.com/acmesh-official/acme.sh). One supported method is `sudo git clone https://github.com/acmesh-official/acme.sh.git /opt/acme.sh && sudo /opt/acme.sh/acme.sh --install -m contact@example.com`. Replace the example with a monitored contact address. Run as root for this system-wide Apache installation; the installer sets a daily renewal cron job. Verify it installed at `/root/.acme.sh/acme.sh` or is available as `acme.sh` in root's PATH.
-5. In the ZeroSSL dashboard, generate EAB credentials in Developer → EAB Credentials. Save the KID and HMAC securely; ZeroSSL says these are not shown again after generation and are reusable. Do not put them in Git, `.env`, shell history, or screenshots.
+## Prerequisites
 
-## Issue the SAN certificate
+1. Confirm DNS for `fuadsaary.me`, `www.fuadsaary.me`, `students.fuadsaary.me`, and `admin.fuadsaary.me` resolves to `102.37.155.177`; see `DNS_CONFIGURATION.md`.
+2. Allow inbound TCP 80 and 443 at the Azure NSG and host firewall. The user's approval added Azure rules `1020` and `1030`; the existing SSH restriction remains unchanged. Apache must serve the port 80 vhost for HTTP-01 challenges.
+3. Use the monitored contact email associated with the ZeroSSL account or another approved mailbox. The account currently reports that its email is not verified. If ZeroSSL requires verification, the account owner must confirm the email from the message ZeroSSL sends.
+4. Install the official acme.sh client as root at `/root/.acme.sh/acme.sh` using the [official repository](https://github.com/acmesh-official/acme.sh). Keep the default root config home `/root/.acme.sh` so the installed renewal cron uses the same account and certificate state.
 
-Use the actual main domain and ACME contact email. Running as root, invoke the provided script; it prompts for the EAB KID and HMAC without echoing them:
+## Issue and install the certificate
+
+On the existing Ubuntu VM, from a trusted repository checkout, run as root and replace only the email argument with the monitored address:
 
 ```bash
 sudo bash scripts/issue-zerossl.sh fuadsaary.me contact@example.com
 ```
 
-The script selects ZeroSSL's ACME directory `https://acme.zerossl.com/v2/DV90`, registers the ACME account with EAB, and uses HTTP-01 webroot validation to request one certificate covering `fuadsaary.me`, `www.fuadsaary.me`, `students.fuadsaary.me`, and `admin.fuadsaary.me`. The relevant authoritative source for endpoint/EAB requirements is [ZeroSSL's ACME documentation](https://zerossl.com/documentation/acme). The HTTP challenge must work for every requested hostname. The script installs the full chain and private key into the Apache paths in `deploy/apache/campusflow.conf.example`, configures HTTP-to-HTTPS redirects/TLS vhosts, checks Apache config, and makes HTTPS requests for all four hostnames. It sets `APP_URL=https://students.fuadsaary.me` and `SESSION_SECURE=true` only after HTTPS, redirect, HSTS, SAN and Secure-cookie checks pass.
+The script registers against ZeroSSL's ACME directory `https://acme.zerossl.com/v2/DV90` and requests one SAN certificate for the apex, `www`, `students`, and `admin` hostnames using HTTP-01. It uses acme.sh's ZeroSSL EAB flow through an ephemeral copy in RAM-backed `/dev/shm`. The script removes only EAB-save statements from that one-shot copy, does not pass EAB credentials in command-line arguments, checks that no EAB values were written to `ca.conf`, and deletes the temporary copy after registration. ACME account keys and normal renewal metadata are required for certificate renewal and remain under the root-only ACME config home; the Apache private key is root-owned and group-readable only by `www-data`.
 
-## Renewal and verification
+The issue script first backs up the CampusFlow Apache site file. After issuance, it installs the full chain and private key to `/etc/ssl/certs/campusflow-fullchain.pem` and `/etc/ssl/private/campusflow-key.pem`, configures TLS vhosts and HTTP→HTTPS redirects, checks Apache syntax, and verifies certificate hostname coverage and HTTPS responses for every host. It changes `APP_URL` to `https://students.fuadsaary.me` and enables `SESSION_SECURE=true` only after the HTTPS checks pass. If checks fail, it restores the previous CampusFlow HTTP site file.
 
-acme.sh installs an automatic scheduled renewal check. `--install-cert` records the installed file paths and Apache reload command so renewal updates the served files; the upstream [acme.sh README](https://github.com/acmesh-official/acme.sh#3-install-the-certificate-to-apachenginx) specifically requires installing certificates to service paths and a reload command. Check client state and schedule:
+## Verify and monitor renewal
+
+After successful issuance, retain redacted output for all checks and never screenshot or print private keys or `.env`:
 
 ```bash
 sudo /root/.acme.sh/acme.sh --list
@@ -32,8 +35,7 @@ for host in fuadsaary.me www.fuadsaary.me students.fuadsaary.me admin.fuadsaary.
   curl -fsSI "https://$host/" | head -n 1
   openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 done
+curl -sSI https://students.fuadsaary.me/login.php | grep -iE '^(set-cookie:|strict-transport-security:)'
 ```
 
-For a renewal rehearsal, use acme.sh's staging/test option appropriate to the installed version before relying on production. Check the client log and make sure the successful renewal hook reloads Apache. On failure, retain the last working certificate, inspect DNS/port 80, EAB registration, ACME logs and system clock, and do not remove the installed files until a replacement validates. Protect `/etc/ssl/private/campusflow-key.pem` as root-owned and group-readable only by the Apache group. Set `SESSION_SECURE=true` in `.env` after HTTPS works.
-
-The ACME certificate is 90 days under the current ZeroSSL free ACME documentation, so renewal must be automated and verified. Do not describe it as six months unless a separately verified account entitlement issues a certificate of that duration.
+Confirm all four SANs and valid dates, `301` HTTP→HTTPS redirects, a Secure session cookie, HSTS, and a daily acme.sh cron entry with Apache reload configured. Renewal is automatic, but it still needs monitoring. For a renewal rehearsal, follow the staging/test option appropriate to the installed acme.sh version and confirm the deploy/reload hook without replacing a working production certificate. If ZeroSSL rejects account registration because the account contact is unverified, stop and have the account owner verify it; do not use a paid order or bypass the check.

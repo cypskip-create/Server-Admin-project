@@ -1,29 +1,33 @@
 # DNS configuration for fuadsaary.me
 
-The Azure Public IP observed for `cyprianServer` is **102.37.155.177**. Azure reports a Standard, static IPv4 allocation, so it is suitable as the DNS target while that Public IP resource remains attached. No IPv6 address is configured; do not publish AAAA records.
+The Azure public IPv4 for the existing VM `cyprianServer` is **102.37.155.177**. Azure identifies its Public IP resource as Standard SKU and Static allocation. No IPv6 address is configured, so do not publish AAAA records.
 
-On 2026-11-19, the Namecheap Advanced DNS page showed the four records below saved. The existing `www` CNAME was restored after it was absent from the editor. The Azure VM's resolver returned `102.37.155.177` for all four hostnames. Verify against an independent public resolver and the authoritative nameservers before marking DNS propagation fully verified. The existing Email Forwarding SPF TXT value was left unchanged.
-
-The current Namecheap Advanced DNS record set is:
+On 2026-11-19, the authenticated Namecheap Advanced DNS page showed the records below. The user approved changing the apex from its previous GitHub Pages A records to Azure. The `www` CNAME was restored after it was absent from the editor. Email Forwarding, the existing SPF TXT record, nameservers, and unrelated records were left unchanged.
 
 | Type | Name/host | Value/target | Purpose |
 |---|---|---|---|
 | A | `@` | `102.37.155.177` | Main CampusFlow site |
 | A | `students` | `102.37.155.177` | Student app |
 | A | `admin` | `102.37.155.177` | Administration portal |
-| CNAME | `www` | `fuadsaary.me` | Canonical redirect to the main site |
+| CNAME | `www` | `fuadsaary.me` | Main-site alias; Apache redirects to the apex |
 
-The Azure VM's DNS label setting does not update the registrar's DNS zone. Namecheap BasicDNS remains selected; nameservers, email forwarding and unrelated records were not intentionally changed. Preserve any unrelated records if further DNS edits are needed.
+The Azure VM DNS label does not update the registrar zone. Namecheap BasicDNS remains selected. No nameserver change or domain transfer was made.
 
-Verify delegation and propagation from a terminal:
+## Verification actually performed
+
+On 2026-11-19, Google Public DNS checks returned `102.37.155.177` for A queries of the apex, `students`, `admin`, and `www`; the `www` CNAME resolves to the apex. Independent Check-Host probes reached the VM from multiple regions: apex HTTP `200`, `www` HTTP `301`, `students` HTTP `302`, and `admin` HTTP `302`. The redirects are expected for the alias and anonymous portal routes. The public HTTP evidence is recorded in `DEPLOYMENT_EVIDENCE.md`.
+
+Repeat the checks with:
 
 ```bash
 dig NS fuadsaary.me
-dig +short A fuadsaary.me
-dig +short A students.fuadsaary.me
-dig +short A admin.fuadsaary.me
-dig +short CNAME www.fuadsaary.me
-dig +short A www.fuadsaary.me
+dig @8.8.8.8 +short A fuadsaary.me
+dig @8.8.8.8 +short A students.fuadsaary.me
+dig @8.8.8.8 +short A admin.fuadsaary.me
+dig @8.8.8.8 +short CNAME www.fuadsaary.me
+dig @8.8.8.8 +short A www.fuadsaary.me
 ```
 
-The three A queries should return `102.37.155.177`; the `www` CNAME should target `fuadsaary.me` (some resolvers also show its resolved A address). Check for stale A/AAAA records at the authoritative nameservers. Do not request the ZeroSSL certificate until all four names resolve correctly and inbound HTTP reaches the VM.
+The expected result for the three A records is `102.37.155.177`; `www` should be a CNAME to `fuadsaary.me` and resolve to that same IPv4. If the static Public IP resource is replaced, update the A records and repeat independent DNS and HTTP checks. Do not remove or replace email records when editing this zone.
+
+TLS has not yet been installed. Do not count DNS/HTTP checks as HTTPS evidence; see `SSL_CONFIGURATION.md` for the pending ZeroSSL certificate stage.

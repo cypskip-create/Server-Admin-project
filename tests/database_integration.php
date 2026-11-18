@@ -20,6 +20,7 @@ try{
  $assert($lockout['status']==='throttled','repeated failed login attempts are throttled');
  $assert(authenticate_student($pdo,$input['username'],$input['password'],'127.0.0.99')['status']==='throttled','throttle blocks valid credentials during cooldown');
  $owner2=$input;$owner2['username']='studentCNSB'.$suffix;$owner2['email']='other'.$suffix.'@example.test';$owner2['student_number']='OT'.$suffix;$otherId=register_student($pdo,$owner2);$created[]=$otherId;
+ $auth2=authenticate_student($pdo,$owner2['username'],$owner2['password'],'127.0.0.3');$assert($auth2['status']==='authenticated'&&!isset($auth2['user']['password_hash']),'second student account also authenticates with a safe session user');
  $tracking=create_service_request($pdo,$studentId,'IT Support','Emergency account access','Urgent lockout: cannot access the campus system after security breach.','normal');
  $requestQuery=$pdo->prepare('SELECT * FROM service_requests WHERE tracking_id=?');$requestQuery->execute([$tracking]);$request=$requestQuery->fetch();
  $assert($request&&$request['recommended_priority']==='high','server-side rules recommend high priority for urgent security issues');

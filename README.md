@@ -24,9 +24,9 @@ The first account is not automatically an administrator. To grant admin access o
 
 ## Azure domain and deployment
 
-The supplied deployment domain is `fuadsaary.me`: the apex serves the landing page, `www` redirects to the apex, `students` serves the student app, and `admin` serves the role-checked admin portal. The deploy scripts use the separate production database `campusflow_prod` and do not reuse the CAT2 lab database. See `docs/DNS_CONFIGURATION.md`, `docs/CLOUD_DEPLOYMENT.md` and `docs/SSL_CONFIGURATION.md` for the exact records and staged verification.
+The domain is `fuadsaary.me`: the apex serves the landing page, `www` redirects to the apex, `students` serves the student app, and `admin` serves the role-checked admin portal. The application runs on the existing Azure VM with a separate `campusflow_prod` database; CAT2 uses its own `CAT2` database. Namecheap A/CNAME records resolve publicly to the Azure static IP and independent HTTP probes reached all four virtual hosts. The Azure NSG allows approved HTTP and HTTPS ports, while SSH remains source-restricted. HTTPS is not installed yet. See `docs/DNS_CONFIGURATION.md`, `docs/CLOUD_DEPLOYMENT.md`, and `docs/SSL_CONFIGURATION.md` for current results and remaining steps.
 
-The domain was provided by the user. Namecheap currently shows the requested DNS records, and the Azure VM resolver returns the static IP for all four names; independent public resolver checks are still pending. Public HTTP/HTTPS, certificate issuance, browser-based VM testing and team contributions must each be marked complete only after their own evidence is captured. Review the certificate lifetime note in `docs/SSL_CONFIGURATION.md` against the assignment's six-month wording.
+The approved TLS route is free ZeroSSL ACME with a 90-day multi-domain certificate and automated renewal. The rubric's “six-month trial” wording does not match this free ACME validity; confirm any different entitlement before claiming six months. `docs/DEPLOYMENT_EVIDENCE.md`, `docs/PROJECT_CHECKLIST.md`, and `docs/CAT2_CHECKLIST.md` separate implemented code, passed tests, externally verified deployment, and student-captured evidence.
 
 ## Automated checks
 
