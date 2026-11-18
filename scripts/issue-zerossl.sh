@@ -37,8 +37,8 @@ done
 
 # acme.sh can obtain ZeroSSL EAB credentials using the ACME contact email. Its
 # normal registration path writes those values to ca.conf. Use a RAM-backed,
-# one-shot copy with only those persistence statements removed, so the EAB
-# values remain in process memory and are never written to disk or argv.
+# one-shot copy with those persistence calls replaced by no-ops, so EAB remains
+# in process memory and is never written to disk or passed in argv.
 ca_conf="$acme_config_home/ca/acme.zerossl.com/v2/DV90/ca.conf"
 if [[ -f "$ca_conf" ]] && grep -Eq '^CA_EAB_(KEY_ID|HMAC_KEY)=' "$ca_conf"; then
   echo 'Existing ZeroSSL EAB data is present in the ACME config; inspect and remove it locally before continuing.' >&2
@@ -62,7 +62,7 @@ eab_save_count="$(grep -Ec '^[[:space:]]*_savecaconf[[:space:]]+CA_EAB_(KEY_ID|H
   echo 'This acme.sh version does not match the reviewed EAB handling; refusing to register.' >&2
   exit 1
 }
-sed -E '/^[[:space:]]*_savecaconf[[:space:]]+CA_EAB_(KEY_ID|HMAC_KEY)([[:space:]]|$)/d' "$acme_source" > "$secure_client"
+sed -E 's/^([[:space:]]*)_savecaconf[[:space:]]+CA_EAB_(KEY_ID|HMAC_KEY).*/\1: # EAB persistence suppressed/' "$acme_source" > "$secure_client"
 chmod 700 "$secure_client"
 if grep -Eq '_savecaconf[[:space:]]+CA_EAB_(KEY_ID|HMAC_KEY)([[:space:]]|$)' "$secure_client"; then
   echo 'Unable to remove EAB persistence from the temporary ACME client.' >&2
