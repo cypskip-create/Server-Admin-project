@@ -10,6 +10,8 @@ The VM now runs Apache 2.4.58, PHP 8.3.6, and MariaDB 10.11.14. CampusFlow is de
 
 ## Migrations and application configuration
 
+On 2026-11-19, the helper successfully deployed revision `355811378f79ad033e07606945014bf8b2746d7a` to the existing VM. Migration 005 was applied on the initial deployment and was reported already applied during a repeat deployment. The repeat run retained root-only backups in `/root/campusflow-backups/20261119T072809Z/`, including `application-before.tar.gz` and `campusflow_prod-before.sql`; the earlier release backup is in `/root/campusflow-backups/20261119T071642Z/`. Its temporary-database preflight suite, Apache configuration check, HTTPS routes, asset checks and anonymous photo-endpoint denial passed. The VM remained running. This redeploy did not change DNS, network security rules, ZeroSSL or renewal configuration.
+
 The initial four ordered migrations were applied and recorded in `schema_migrations`:
 
 1. `001_schema.sql` — users, service requests, request history, and baseline schema.
@@ -72,7 +74,7 @@ sudo mariadb campusflow_prod -e 'SHOW TABLES; SELECT migration,applied_at FROM s
 sudo mariadb campusflow_prod -e 'SHOW COLUMNS FROM login_attempts;'
 ```
 
-The deployed PHP lint, security checks, and MariaDB integration suite passed using `bash scripts/test.sh`; the GitHub Actions run for commit `2dca2e0` also passed. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Profile-photo unit and MariaDB tests cover validation, ownership, private WebP output, replacement, removal and reference consistency. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md` and `MOBILE_AND_PROFILE_PHOTO.md`.
+The deployed PHP lint, security checks, and MariaDB integration suite passed in the redeploy helper against a temporary database; GitHub Actions run [44479615710](https://github.com/cypskip-create/Server-Admin-project/actions/runs/44479615710) for revision `355811378f79ad033e07606945014bf8b2746d7a` also completed successfully. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Profile-photo unit and MariaDB tests cover validation, ownership, private WebP output, replacement, removal and reference consistency. These automated flows use disposable test data; no production user photo lifecycle was run. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md` and `MOBILE_AND_PROFILE_PHOTO.md`.
 
 ## Free ZeroSSL ACME deployment result
 
