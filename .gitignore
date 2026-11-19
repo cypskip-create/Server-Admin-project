@@ -1,5 +1,6 @@
 /vendor/
 .env
+/.user.ini
 *.log
 /deploy/ssl/*.pem
 /deploy/ssl/*.key

@@ -30,6 +30,10 @@ repo_url="${REPO_URL:-https://github.com/cypskip-create/Server-Admin-project.git
   echo 'CampusFlow Apache site already exists; inspect and back it up before continuing.' >&2
   exit 1
 }
+[[ ! -e /etc/apache2/conf-available/campusflow-upload-limits.conf ]] || {
+  echo 'CampusFlow upload-limit configuration already exists; inspect it before deployment.' >&2
+  exit 1
+}
 
 # Preserve the current service configuration before package installation can
 # create or change Apache/MariaDB files. No existing site is disabled.
@@ -47,6 +51,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y apache2 mariadb-server php php-cli libapache2-mod-php php-mysql php-mbstring php-gd git curl openssl
 systemctl enable --now apache2 mariadb
+apachectl -M | grep -Eq 'php(_[0-9]+)?_module' || { echo 'Apache PHP module is required for the scoped upload limits.' >&2; exit 1; }
 
 # Never reuse an existing database or database account. This app uses its own
 # production database and runtime principal; other university schemas/users
@@ -93,6 +98,14 @@ SESSION_SECURE=false
 PROFILE_PHOTO_DIR=/var/lib/campusflow/profile-photos
 EOF
 unset db_secret
+cat > "$app_dir/.user.ini" <<'EOF'
+upload_max_filesize=6M
+post_max_size=8M
+max_file_uploads=10
+max_execution_time=60
+max_input_time=60
+EOF
+chmod 640 "$app_dir/.user.ini"
 chown root:www-data "$app_dir/.env"
 chmod 640 "$app_dir/.env"
 chown -R root:www-data "$app_dir"
@@ -145,6 +158,20 @@ cat > /etc/apache2/sites-available/campusflow.conf <<EOF
 </VirtualHost>
 EOF
 chmod 640 /etc/apache2/sites-available/campusflow.conf
+cat > /etc/apache2/conf-available/campusflow-upload-limits.conf <<EOF
+# Scoped to CampusFlow only; unrelated PHP applications retain their settings.
+<Directory "$app_dir/public">
+    <IfModule php_module>
+        php_admin_value upload_max_filesize 6M
+        php_admin_value post_max_size 8M
+        php_admin_value max_file_uploads 10
+        php_admin_value max_execution_time 60
+        php_admin_value max_input_time 60
+    </IfModule>
+</Directory>
+EOF
+chmod 640 /etc/apache2/conf-available/campusflow-upload-limits.conf
+a2enconf campusflow-upload-limits >/dev/null
 a2enmod alias headers >/dev/null
 a2ensite campusflow.conf >/dev/null
 apachectl configtest

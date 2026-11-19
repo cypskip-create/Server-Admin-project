@@ -43,23 +43,34 @@ function create_service_request(PDO $db, int $userId, string $category, string $
     }
 }
 
-function update_request_status(PDO $db, int $requestId, int $actorId, string $newStatus): bool
+function update_request_status(PDO $db, int $requestId, int $actorId, string $newStatus, string $note = ''): bool
 {
     $allowed = ['submitted','in_review','in_progress','completed','declined'];
     if (!in_array($newStatus, $allowed, true)) throw new InvalidArgumentException('Unsupported request status.');
+    $note = trim($note);
+    if (mb_strlen($note, 'UTF-8') > 225) throw new InvalidArgumentException('Administrator response must be 225 characters or fewer.');
     $db->beginTransaction();
     try {
+        $actorQuery = $db->prepare('SELECT role FROM users WHERE id=?');
+        $actorQuery->execute([$actorId]);
+        if ($actorQuery->fetchColumn() !== 'admin') throw new RuntimeException('Administrator authorization required for request updates.');
         $query=$db->prepare('SELECT user_id,status FROM service_requests WHERE id=? FOR UPDATE');
         $query->execute([$requestId]);$request=$query->fetch();
         if (!$request) {$db->rollBack();return false;}
         $oldStatus=$request['status'];
-        if ($oldStatus!==$newStatus) {
-            $db->prepare("UPDATE service_requests SET status=?,first_response_at=CASE WHEN first_response_at IS NULL AND ?<>'submitted' THEN CURRENT_TIMESTAMP ELSE first_response_at END WHERE id=?")->execute([$newStatus,$newStatus,$requestId]);
-            $db->prepare('INSERT INTO request_status_history(request_id,changed_by,old_status,new_status,note) VALUES(?,?,?,?,?)')->execute([$requestId,$actorId,$oldStatus,$newStatus,'Status updated by administrator']);
-            $message='Your request status changed to '.str_replace('_',' ',$newStatus).'.';
+        $hasUpdate = $oldStatus !== $newStatus || $note !== '';
+        if ($hasUpdate) {
+            $db->prepare("UPDATE service_requests SET status=?,first_response_at=CASE WHEN first_response_at IS NULL AND (?<>'submitted' OR ?<>'') THEN CURRENT_TIMESTAMP ELSE first_response_at END WHERE id=?")
+                ->execute([$newStatus,$newStatus,$note,$requestId]);
+            $historyNote = $note !== '' ? $note : 'Status updated by administrator';
+            $db->prepare('INSERT INTO request_status_history(request_id,changed_by,old_status,new_status,note) VALUES(?,?,?,?,?)')->execute([$requestId,$actorId,$oldStatus,$newStatus,$historyNote]);
+            $message='Status: '.str_replace('_',' ',$newStatus).'.';
+            if ($note !== '') $message .= ' '.$note;
             $db->prepare('INSERT INTO notifications(user_id,request_id,notification_type,message) VALUES(?,?,?,?)')->execute([$request['user_id'],$requestId,'status_changed',$message]);
         }
-        $db->commit();return true;
+        $db->commit();
+        if ($hasUpdate) error_log('CampusFlow admin request update: actor='.$actorId.' request='.$requestId.' status='.$newStatus.'.');
+        return true;
     } catch (Throwable $error) {
         if ($db->inTransaction()) $db->rollBack();
         throw $error;

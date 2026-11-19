@@ -29,7 +29,7 @@ function register_student(PDO $db, array $input): int
     return (int)$db->lastInsertId();
 }
 
-function authenticate_student(PDO $db, string $identity, string $password, string $ipAddress): array
+function authenticate_user(PDO $db, string $identity, string $password, string $ipAddress, ?string $requiredRole = null): array
 {
     $db->exec('DELETE FROM login_attempts WHERE updated_at < CURRENT_TIMESTAMP - INTERVAL 1 DAY');
     $bucket = hash('sha256', $ipAddress."\0".strtolower(trim($identity)));
@@ -41,7 +41,7 @@ function authenticate_student(PDO $db, string $identity, string $password, strin
     $query = $db->prepare('SELECT id,full_name,username,email,role,password_hash FROM users WHERE username=? OR email=?');
     $query->execute([trim($identity),strtolower(trim($identity))]);
     $user = $query->fetch();
-    if ($user && password_verify($password, $user['password_hash'])) {
+    if ($user && password_verify($password, $user['password_hash']) && ($requiredRole === null || $user['role'] === $requiredRole)) {
         $db->prepare('DELETE FROM login_attempts WHERE bucket=?')->execute([$bucket]);
         unset($user['password_hash']);
         return ['status'=>'authenticated','user'=>$user];
@@ -52,4 +52,14 @@ function authenticate_student(PDO $db, string $identity, string $password, strin
     $blockedUntil = $failures >= 8 ? date('Y-m-d H:i:s',time()+900) : null;
     $db->prepare('INSERT INTO login_attempts(bucket,failures,window_started_at,blocked_until) VALUES(?,?,CURRENT_TIMESTAMP,?) ON DUPLICATE KEY UPDATE failures=VALUES(failures),window_started_at=CURRENT_TIMESTAMP,blocked_until=VALUES(blocked_until)')->execute([$bucket,$failures,$blockedUntil]);
     return ['status'=>$failures >= 8 ? 'throttled' : 'invalid'];
+}
+
+function authenticate_student(PDO $db, string $identity, string $password, string $ipAddress): array
+{
+    return authenticate_user($db, $identity, $password, $ipAddress, 'student');
+}
+
+function authenticate_admin(PDO $db, string $identity, string $password, string $ipAddress): array
+{
+    return authenticate_user($db, $identity, $password, $ipAddress, 'admin');
 }

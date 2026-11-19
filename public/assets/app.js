@@ -36,22 +36,45 @@
   const previewFrame = document.querySelector('#photo-preview-frame');
   const previewStatus = document.querySelector('#photo-preview-status');
   const uploadButton = document.querySelector('#photo-upload-button');
+  const pickerButton = document.querySelector('.photo-picker-button');
+  const initialAvatar = previewFrame?.firstElementChild?.cloneNode(true) || null;
   let previewUrl = null;
 
-  if (uploadForm && photoInput && previewFrame && previewStatus) {
+  if (uploadForm && photoInput && previewFrame && previewStatus && uploadButton) {
+    const clearPreview = () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+      if (initialAvatar) previewFrame.replaceChildren(initialAvatar.cloneNode(true));
+      uploadButton.hidden = true;
+      uploadButton.disabled = true;
+    };
+
+    // Clearing before the native picker opens makes selecting the same file
+    // again fire a fresh change event. A cancelled picker leaves the saved
+    // server avatar visible and no stale preview ready to submit.
+    photoInput.addEventListener('click', () => {
+      if (photoInput.value) {
+        photoInput.value = '';
+        clearPreview();
+        previewStatus.textContent = '';
+      }
+    });
+
     photoInput.addEventListener('change', () => {
       const file = photoInput.files?.[0];
       if (!file) return;
       const accepted = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!accepted.includes(file.type)) {
+      if (file.type && !accepted.includes(file.type)) {
         photoInput.value = '';
+        clearPreview();
         previewStatus.textContent = 'Choose a JPEG, PNG or WebP image.';
         previewStatus.className = 'photo-preview-status error-text';
         return;
       }
-      if (file.size > 2 * 1024 * 1024) {
+      if (file.size > 5 * 1024 * 1024) {
         photoInput.value = '';
-        previewStatus.textContent = 'Choose an image no larger than 2 MB.';
+        clearPreview();
+        previewStatus.textContent = 'Your image is too large. Please choose a photo smaller than 5 MB.';
         previewStatus.className = 'photo-preview-status error-text';
         return;
       }
@@ -70,6 +93,8 @@
       image.alt = 'Preview of the selected profile photo';
       previewStatus.textContent = `${file.name} selected. Your photo will be cropped to a square.`;
       previewStatus.className = 'photo-preview-status';
+      uploadButton.hidden = false;
+      uploadButton.disabled = false;
     });
 
     uploadForm.addEventListener('submit', (event) => {
@@ -80,11 +105,15 @@
         photoInput.focus();
         return;
       }
-      if (uploadButton) {
-        uploadButton.disabled = true;
-        uploadButton.textContent = 'Uploading…';
-      }
+      uploadButton.disabled = true;
+      uploadButton.textContent = 'Uploading…';
+      if (pickerButton) pickerButton.setAttribute('aria-disabled', 'true');
       previewStatus.textContent = 'Uploading and securing your photo…';
+      previewStatus.className = 'photo-preview-status';
+    });
+
+    document.querySelector('#remove-photo-button')?.addEventListener('click', (event) => {
+      if (!window.confirm('Remove your current profile photo?')) event.preventDefault();
     });
 
     window.addEventListener('pagehide', () => {

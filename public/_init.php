@@ -3,6 +3,7 @@ require_once dirname(__DIR__).'/config/bootstrap.php';
 require_once dirname(__DIR__).'/app/Services/AuthService.php';
 require_once dirname(__DIR__).'/app/Services/RequestRules.php';
 require_once dirname(__DIR__).'/app/Services/ProfilePhotoService.php';
+require_once dirname(__DIR__).'/app/Services/AdminService.php';
 
 function current_profile_photo_key(): ?string
 {
@@ -30,8 +31,7 @@ function user_avatar_markup(string $name, string $class = 'avatar', string $alt 
 {
     $key = current_profile_photo_key();
     if ($key !== null) {
-        $version = substr(hash('sha256', $key), 0, 12);
-        return '<img class="'.e($class).'" src="/profile-photo.php?v='.$version.'" alt="'.e($alt).'" width="48" height="48" decoding="async">';
+        return '<img class="'.e($class).'" src="'.e((string)profile_photo_url($key)).'" alt="'.e($alt).'" width="48" height="48" decoding="async">';
     }
     return '<span class="'.e($class).' avatar-initials" aria-label="'.e('Initials '.user_initials($name)).'">'.e(user_initials($name)).'</span>';
 }

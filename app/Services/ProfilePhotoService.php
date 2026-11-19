@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const PROFILE_PHOTO_MAX_BYTES = 2_097_152;
+const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const PROFILE_PHOTO_MAX_PIXELS = 12_000_000;
 const PROFILE_PHOTO_OUTPUT_SIZE = 512;
 
@@ -17,6 +17,18 @@ function profile_photo_user_id(mixed $user): int
 function profile_photo_key_is_valid(mixed $key): bool
 {
     return is_string($key) && preg_match('/\A[a-f0-9]{48}\.webp\z/D', $key) === 1;
+}
+
+function profile_photo_url(mixed $key): ?string
+{
+    return profile_photo_key_is_valid($key) ? '/profile-photo.php?v='.rawurlencode((string)$key) : null;
+}
+
+function profile_photo_version_matches(mixed $storedKey, mixed $requestedVersion): bool
+{
+    return profile_photo_key_is_valid($storedKey)
+        && profile_photo_key_is_valid($requestedVersion)
+        && hash_equals((string)$storedKey, (string)$requestedVersion);
 }
 
 function profile_photo_storage_directory(string $directory, string $publicDirectory): string
@@ -44,8 +56,8 @@ function store_profile_photo(array $upload, string $directory, string $publicDir
     $error = filter_var($upload['error'] ?? null, FILTER_VALIDATE_INT);
     if ($error !== UPLOAD_ERR_OK) {
         $messages = [
-            UPLOAD_ERR_INI_SIZE => 'The image exceeds the server upload limit.',
-            UPLOAD_ERR_FORM_SIZE => 'Choose an image no larger than 2 MB.',
+            UPLOAD_ERR_INI_SIZE => 'Your image is too large. Please choose a photo smaller than 5 MB.',
+            UPLOAD_ERR_FORM_SIZE => 'Your image is too large. Please choose a photo smaller than 5 MB.',
             UPLOAD_ERR_PARTIAL => 'The image upload was interrupted. Try again.',
             UPLOAD_ERR_NO_FILE => 'Choose an image to upload.',
             UPLOAD_ERR_NO_TMP_DIR => 'The server upload area is unavailable.',
@@ -62,7 +74,7 @@ function store_profile_photo(array $upload, string $directory, string $publicDir
     $actualBytes = filesize($temporaryPath);
     $reportedBytes = filter_var($upload['size'] ?? null, FILTER_VALIDATE_INT);
     if ($actualBytes === false || $actualBytes < 1 || $actualBytes > PROFILE_PHOTO_MAX_BYTES || $reportedBytes === false || $reportedBytes > PROFILE_PHOTO_MAX_BYTES) {
-        throw new InvalidArgumentException('Choose an image no larger than 2 MB.');
+        throw new InvalidArgumentException('Your image is too large. Please choose a photo smaller than 5 MB.');
     }
 
     $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -139,7 +151,8 @@ function remove_profile_photo_file(string $directory, string $key, string $publi
     return @unlink($path);
 }
 
-function replace_user_profile_photo(PDO $db, int $userId, array $upload, string $directory, string $publicDirectory): string
+/** @return array{key:string,replaced:bool,old_file_removed:bool} */
+function replace_user_profile_photo(PDO $db, int $userId, array $upload, string $directory, string $publicDirectory): array
 {
     if ($userId < 1) throw new ProfilePhotoUnauthorized('Authentication required.');
     $newKey = store_profile_photo($upload, $directory, $publicDirectory);
@@ -158,10 +171,13 @@ function replace_user_profile_photo(PDO $db, int $userId, array $upload, string 
         remove_profile_photo_file($directory, $newKey, $publicDirectory);
         throw $error;
     }
-    if (is_string($oldKey) && profile_photo_key_is_valid($oldKey) && $oldKey !== $newKey) {
-        remove_profile_photo_file($directory, $oldKey, $publicDirectory);
+    $replaced = is_string($oldKey) && profile_photo_key_is_valid($oldKey) && $oldKey !== $newKey;
+    $oldFileRemoved = true;
+    if ($replaced) {
+        $oldFileRemoved = remove_profile_photo_file($directory, $oldKey, $publicDirectory);
+        if (!$oldFileRemoved) error_log('CampusFlow profile photo cleanup failed for user '.$userId.'.');
     }
-    return $newKey;
+    return ['key'=>$newKey,'replaced'=>$replaced,'old_file_removed'=>$oldFileRemoved];
 }
 
 function clear_user_profile_photo(PDO $db, int $userId, string $directory, string $publicDirectory): bool

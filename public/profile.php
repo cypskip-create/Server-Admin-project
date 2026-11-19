@@ -73,15 +73,16 @@ page_start('My profile');
         <form class="photo-upload-form" id="photo-upload-form" action="/profile-photo.php" method="post" enctype="multipart/form-data">
             <input type="hidden" name="csrf" value="<?=e(csrf())?>">
             <input type="hidden" name="photo_action" value="upload">
-            <label for="profile-photo-input">Choose a photo</label>
-            <input id="profile-photo-input" name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-guidance" required>
-            <p class="hint" id="photo-guidance">JPEG, PNG or WebP · maximum 2 MB. Your image is resized and stored privately.</p>
+            <input class="photo-file-input" id="profile-photo-input" name="profile_photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-guidance" required>
             <div class="photo-actions">
-                <button class="button" id="photo-upload-button" type="submit">Change photo</button>
+                <label class="button button-secondary photo-picker-button" for="profile-photo-input"><?=$hasPhoto ? 'Change photo' : 'Upload photo'?></label>
+                <button class="button" id="photo-upload-button" type="submit" disabled hidden>Save new photo</button>
                 <?php if ($hasPhoto): ?>
-                    <button class="button button-secondary" type="submit" form="remove-photo-form">Remove photo</button>
+                    <button class="button button-secondary" type="submit" form="remove-photo-form" id="remove-photo-button">Remove photo</button>
                 <?php endif; ?>
             </div>
+            <p class="hint" id="photo-guidance">JPEG, PNG or WebP · maximum 5 MB. Your image is resized and stored privately.</p>
+            <p class="photo-preview-status" id="photo-preview-status" aria-live="polite"></p>
         </form>
         <?php if ($hasPhoto): ?>
             <form id="remove-photo-form" action="/profile-photo.php" method="post" hidden>
@@ -89,7 +90,6 @@ page_start('My profile');
                 <input type="hidden" name="photo_action" value="remove">
             </form>
         <?php endif; ?>
-        <p class="photo-preview-status" id="photo-preview-status" aria-live="polite"></p>
     </section>
 
     <form method="post" class="profile-details-form">

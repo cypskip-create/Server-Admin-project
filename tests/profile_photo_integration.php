@@ -40,6 +40,15 @@ $makeUpload = static function (int $red, int $green, int $blue, string $name = '
     imagedestroy($image);
     return ['error'=>UPLOAD_ERR_OK,'tmp_name'=>$temporaryPath,'size'=>filesize($temporaryPath),'name'=>$name,'type'=>'application/octet-stream'];
 };
+$makePaddedUpload = static function (int $targetBytes) use ($makeUpload): array {
+    $upload = $makeUpload(100, 145, 220, 'large-valid.png');
+    $currentBytes = filesize($upload['tmp_name']);
+    if (!is_int($currentBytes) || $targetBytes <= $currentBytes) throw new RuntimeException('Invalid padded-image target.');
+    file_put_contents($upload['tmp_name'], str_repeat("\0", $targetBytes - $currentBytes), FILE_APPEND);
+    clearstatcache(true, $upload['tmp_name']);
+    $upload['size'] = filesize($upload['tmp_name']);
+    return $upload;
+};
 
 $suffix = bin2hex(random_bytes(5));
 $createdUsers = [];
@@ -62,11 +71,13 @@ try {
 
     $initialUpload = $makeUpload(30, 90, 210, '../../public/profile.php');
     $temporaryFiles[] = $initialUpload['tmp_name'];
-    $firstKey = replace_user_profile_photo($pdo, $sessionOwner, $initialUpload, $storage, $public);
+    $firstResult = replace_user_profile_photo($pdo, $sessionOwner, $initialUpload, $storage, $public);
+    $firstKey = $firstResult['key'];
     $storedPath = $storage.DIRECTORY_SEPARATOR.$firstKey;
     $row = $pdo->prepare('SELECT profile_photo_key FROM users WHERE id=?');
     $row->execute([$ownerId]);
     $assert(profile_photo_key_is_valid($firstKey) && $row->fetchColumn() === $firstKey && is_file($storedPath), 'successful upload stores a random private file and matching database reference');
+    $assert(!$firstResult['replaced'], 'first photo upload is reported as an initial upload');
     $imageInfo = getimagesize($storedPath);
     $assert(($imageInfo['mime'] ?? '') === 'image/webp' && $imageInfo[0] === 512 && $imageInfo[1] === 512, 'uploaded image is safely decoded, square-cropped and normalized to WebP');
     $realStorage = realpath($storage);
@@ -94,24 +105,72 @@ try {
     file_put_contents($php, '<?php echo "no"; ?>');
     $expectFailure(static fn() => replace_user_profile_photo($pdo, $ownerId, ['error'=>UPLOAD_ERR_OK,'tmp_name'=>$php,'size'=>filesize($php),'name'=>'avatar.php','type'=>'image/jpeg'], $storage, $public), 'executable PHP content is rejected even with an image MIME claim');
 
+    $largeThreeMb = $makePaddedUpload(3 * 1024 * 1024);
+    $temporaryFiles[] = $largeThreeMb['tmp_name'];
+    $threeMbResult = replace_user_profile_photo($pdo, $ownerId, $largeThreeMb, $storage, $public);
+    $row->execute([$ownerId]);
+    $assert($threeMbResult['replaced'] && $row->fetchColumn() === $threeMbResult['key'], 'valid 3 MB PNG replacement is accepted and updates the database key');
+    $assert(!file_exists($storedPath), 'old image is removed only after the 3 MB replacement commits');
+    $previousKey = $threeMbResult['key'];
+    $previousPath = $storage.DIRECTORY_SEPARATOR.$previousKey;
+
+    $belowLimit = $makePaddedUpload(PROFILE_PHOTO_MAX_BYTES - 1);
+    $temporaryFiles[] = $belowLimit['tmp_name'];
+    $nearLimitResult = replace_user_profile_photo($pdo, $ownerId, $belowLimit, $storage, $public);
+    $row->execute([$ownerId]);
+    $assert($nearLimitResult['replaced'] && $row->fetchColumn() === $nearLimitResult['key'], 'valid PNG just below 5 MB is accepted and saved');
+    $assert(!file_exists($previousPath), 'prior image is removed after a near-limit replacement commits');
+    $oldCacheUrl = profile_photo_url($nearLimitResult['key']);
+
+    $oversize = tempnam(sys_get_temp_dir(), 'campusflow-large-photo-');
+    $temporaryFiles[] = $oversize;
+    file_put_contents($oversize, str_repeat('X', PROFILE_PHOTO_MAX_BYTES + 1));
+    $expectFailure(static fn() => replace_user_profile_photo($pdo, $ownerId, ['error'=>UPLOAD_ERR_OK,'tmp_name'=>$oversize,'size'=>filesize($oversize),'name'=>'large.png','type'=>'image/png'], $storage, $public), 'photo larger than 5 MB is rejected');
+    $row->execute([$ownerId]);
+    $assert($row->fetchColumn() === $nearLimitResult['key'] && is_file($storage.DIRECTORY_SEPARATOR.$nearLimitResult['key']), 'oversized replacement preserves the existing photo and database key');
+
     $secondUpload = $makeUpload(210, 80, 35, 'avatar.webp', 'webp');
     $temporaryFiles[] = $secondUpload['tmp_name'];
-    $secondKey = replace_user_profile_photo($pdo, $ownerId, $secondUpload, $storage, $public);
+    $secondResult = replace_user_profile_photo($pdo, $ownerId, $secondUpload, $storage, $public);
+    $secondKey = $secondResult['key'];
     $row->execute([$ownerId]);
-    $assert($secondKey !== $firstKey && $row->fetchColumn() === $secondKey && is_file($storage.DIRECTORY_SEPARATOR.$secondKey), 'replacement atomically points the account to the new photo');
-    $assert(!file_exists($storedPath), 'replaced photo file is removed after the new reference commits');
+    $assert($secondResult['replaced'] && $secondKey !== $nearLimitResult['key'] && $row->fetchColumn() === $secondKey && is_file($storage.DIRECTORY_SEPARATOR.$secondKey), 'replacement atomically points the account to the new photo');
+    $assert(profile_photo_url($secondKey) !== $oldCacheUrl && profile_photo_version_matches($secondKey, $secondKey) && !profile_photo_version_matches($secondKey, $nearLimitResult['key']), 'replacement changes its avatar URL and stale photo versions are rejected');
+    $assert(!file_exists($storage.DIRECTORY_SEPARATOR.$nearLimitResult['key']), 'replaced photo file is removed after the new reference commits');
 
     $thirdUpload = $makeUpload(80, 170, 120, 'avatar.jpg', 'jpeg');
     $temporaryFiles[] = $thirdUpload['tmp_name'];
-    $thirdKey = replace_user_profile_photo($pdo, $ownerId, $thirdUpload, $storage, $public);
+    $thirdResult = replace_user_profile_photo($pdo, $ownerId, $thirdUpload, $storage, $public);
+    $thirdKey = $thirdResult['key'];
     $row->execute([$ownerId]);
-    $assert($thirdKey !== $secondKey && $row->fetchColumn() === $thirdKey && is_file($storage.DIRECTORY_SEPARATOR.$thirdKey), 'JPEG input can replace a WebP photo using the private normalized format');
+    $assert($thirdResult['replaced'] && $thirdKey !== $secondKey && $row->fetchColumn() === $thirdKey && is_file($storage.DIRECTORY_SEPARATOR.$thirdKey), 'JPEG input can replace a WebP photo using the private normalized format');
     $assert(!file_exists($storage.DIRECTORY_SEPARATOR.$secondKey), 'previous WebP file is removed after JPEG replacement commits');
+
+    $repeatUpload = replace_user_profile_photo($pdo, $ownerId, $thirdUpload, $storage, $public);
+    $assert($repeatUpload['key'] !== $thirdKey && $repeatUpload['replaced'], 'reselecting identical image content still produces a fresh replacement key');
+    $assert(!file_exists($storage.DIRECTORY_SEPARATOR.$thirdKey) && profile_photo_url($repeatUpload['key']) !== profile_photo_url($thirdKey), 'same-file replacement removes old storage and invalidates the prior URL');
+    $thirdKey = $repeatUpload['key'];
+
+    $otherUpload = $makeUpload(35, 90, 170, 'other-student.png');
+    $temporaryFiles[] = $otherUpload['tmp_name'];
+    $otherResult = replace_user_profile_photo($pdo, $otherId, $otherUpload, $storage, $public);
+    $otherRow->execute([$otherId]);
+    $assert($otherResult['key'] === $otherRow->fetchColumn() && is_file($storage.DIRECTORY_SEPARATOR.$otherResult['key']), 'a second user can upload their own isolated private photo');
+    $row->execute([$ownerId]);
+    $assert($row->fetchColumn() === $thirdKey, 'another user upload cannot replace the first user photo');
 
     $removed = clear_user_profile_photo($pdo, $ownerId, $storage, $public);
     $row->execute([$ownerId]);
     $assert($removed && $row->fetchColumn() === null, 'photo removal clears the database reference');
     $assert(!file_exists($storage.DIRECTORY_SEPARATOR.$thirdKey), 'photo removal deletes only the current stored photo');
+    $afterRemovalUpload = $makeUpload(20, 30, 40);
+    $temporaryFiles[] = $afterRemovalUpload['tmp_name'];
+    $afterRemoval = replace_user_profile_photo($pdo, $ownerId, $afterRemovalUpload, $storage, $public);
+    $row->execute([$ownerId]);
+    $assert(!$afterRemoval['replaced'] && $row->fetchColumn() === $afterRemoval['key'], 'a photo can be uploaded again after removal');
+    $assert(clear_user_profile_photo($pdo, $ownerId, $storage, $public), 'reuploaded photo can be removed again');
+    $assert(clear_user_profile_photo($pdo, $otherId, $storage, $public), 'second user can remove only their own photo');
+
     $orphanAttempt = $makeUpload(20, 30, 40);
     $temporaryFiles[] = $orphanAttempt['tmp_name'];
     $expectFailure(static fn() => replace_user_profile_photo($pdo, 9_999_999_999, $orphanAttempt, $storage, $public), 'database failure rolls back and removes a newly written orphan file');

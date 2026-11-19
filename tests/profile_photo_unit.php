@@ -7,13 +7,14 @@ $assert = static function (bool $condition, string $label): void {
     if (!$condition) throw new RuntimeException('FAIL: '.$label);
     echo "PASS: $label\n";
 };
-$rejects = static function (callable $action, string $label, ?string $message = null) use ($assert): void {
+$rejects = static function (callable $action, string $label, ?string $message = null) use ($assert): Throwable {
     try { $action(); }
     catch (Throwable $error) {
         $assert($message === null || str_contains($error->getMessage(), $message), $label);
-        return;
+        return $error;
     }
     $assert(false, $label);
+    throw new LogicException('Unreachable');
 };
 
 $_SESSION = [];
@@ -26,6 +27,11 @@ $rejects(static fn() => profile_photo_user_id(['id'=>'not-an-id']), 'photo acces
 $assert(profile_photo_user_id(['id'=>37,'role'=>'student']) === 37, 'photo ownership comes from the authenticated session identity');
 $assert(profile_photo_key_is_valid(str_repeat('a', 48).'.webp'), 'random WebP storage key shape is accepted');
 $assert(!profile_photo_key_is_valid('../profile.php') && !profile_photo_key_is_valid('user.jpg'), 'path traversal and original filenames are never accepted as storage keys');
+$assert(PROFILE_PHOTO_MAX_BYTES === 5 * 1024 * 1024, 'photo upload limit is exactly 5 MiB');
+$versionA = str_repeat('a', 48).'.webp';
+$versionB = str_repeat('b', 48).'.webp';
+$assert(profile_photo_url($versionA) !== profile_photo_url($versionB), 'each replacement gets a distinct cache-versioned URL');
+$assert(profile_photo_version_matches($versionA, $versionA) && !profile_photo_version_matches($versionB, $versionA), 'photo endpoint accepts the current version and rejects stale cached URLs');
 
 $temporaryRoot = sys_get_temp_dir().DIRECTORY_SEPARATOR.'campusflow-photo-unit-'.bin2hex(random_bytes(8));
 $storage = $temporaryRoot.DIRECTORY_SEPARATOR.'private';
@@ -40,7 +46,12 @@ try {
     $oversizePath = tempnam(sys_get_temp_dir(), 'campusflow-oversize-');
     $temporaryFiles[] = $oversizePath;
     file_put_contents($oversizePath, str_repeat('A', PROFILE_PHOTO_MAX_BYTES + 1));
-    $rejectUpload(['error'=>UPLOAD_ERR_OK,'tmp_name'=>$oversizePath,'size'=>PROFILE_PHOTO_MAX_BYTES + 1,'name'=>'large.png','type'=>'image/png'], 'oversized image is rejected');
+    $largeError = $rejects(static fn() => store_profile_photo(['error'=>UPLOAD_ERR_OK,'tmp_name'=>$oversizePath,'size'=>PROFILE_PHOTO_MAX_BYTES + 1,'name'=>'large.png','type'=>'image/png'], $storage, $public), 'oversized image is rejected');
+    $assert(str_contains($largeError->getMessage(), 'smaller than 5 MB'), 'oversize validation shows the 5 MB guidance');
+    $iniError = $rejects(static fn() => store_profile_photo(['error'=>UPLOAD_ERR_INI_SIZE], $storage, $public), 'server upload limit failures are rejected');
+    $assert(str_contains($iniError->getMessage(), 'Your image is too large. Please choose a photo smaller than 5 MB.'), 'server upload-limit failures use the requested message');
+    $partialError = $rejects(static fn() => store_profile_photo(['error'=>UPLOAD_ERR_PARTIAL], $storage, $public), 'interrupted uploads are rejected');
+    $assert(str_contains($partialError->getMessage(), 'interrupted'), 'interrupted uploads receive a clear message');
 
     $svgPath = tempnam(sys_get_temp_dir(), 'campusflow-svg-');
     $temporaryFiles[] = $svgPath;
@@ -77,6 +88,11 @@ try {
         $assert(profile_photo_key_is_valid($key) && is_file($storedPath), 'valid raster image gets a random server-side filename despite a traversal name');
         $assert(($info['mime'] ?? '') === 'image/webp' && $info[0] === 512 && $info[1] === 512, 'photo is decoded, cropped, resized and re-encoded as a 512px WebP');
         $assert(remove_profile_photo_file($storage, $key, $public) && !file_exists($storedPath), 'photo removal only deletes a validated stored image');
+        $sameFileKey = store_profile_photo($validUpload, $storage, $public);
+        $sameFileAgainKey = store_profile_photo($validUpload, $storage, $public);
+        $assert($sameFileAgainKey !== $sameFileKey, 'selecting the same file repeatedly creates a new cache version');
+        remove_profile_photo_file($storage, $sameFileKey, $public);
+        remove_profile_photo_file($storage, $sameFileAgainKey, $public);
         foreach (['jpeg','webp'] as $format) {
             $sourceImage = imagecreatetruecolor(48, 64);
             imagefill($sourceImage, 0, 0, imagecolorallocate($sourceImage, 90, 160, 200));

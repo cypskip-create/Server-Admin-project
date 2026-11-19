@@ -17,7 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $query = db()->prepare('SELECT profile_photo_key FROM users WHERE id=?');
         $query->execute([$userId]);
         $key = $query->fetchColumn();
-        if (!profile_photo_key_is_valid($key)) {
+        $requestedVersion = $_GET['v'] ?? null;
+        if (!profile_photo_version_matches($key, $requestedVersion)) {
             http_response_code(404);
             header('Cache-Control: private, no-store');
             exit;
@@ -36,9 +37,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         header('Content-Type: image/webp');
         header('Content-Disposition: inline; filename="profile.webp"');
         header('X-Content-Type-Options: nosniff');
-        header('Cache-Control: private, max-age=300, must-revalidate');
+        // Cache the private image only with mandatory revalidation. The opaque
+        // database key in the URL changes on every upload, so replacements have
+        // a distinct cache entry while this route still checks authentication.
+        header('Cache-Control: private, no-cache, must-revalidate');
+        header('Vary: Cookie');
         header('ETag: '.$etag);
-        if (trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')) === $etag) {
+        $ifNoneMatch = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+        $etagMatches = $ifNoneMatch === '*';
+        foreach (explode(',', $ifNoneMatch) as $candidate) {
+            if (trim($candidate) === $etag) $etagMatches = true;
+        }
+        if ($etagMatches) {
             http_response_code(304);
             exit;
         }
@@ -59,6 +69,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Method not allowed.');
 }
 
+// PHP leaves $_POST and $_FILES empty when post_max_size is exceeded. Detect
+// that case before CSRF parsing so users receive the upload-size explanation.
+$postLimitText = trim((string)ini_get('post_max_size'));
+if (preg_match('/\A(\d+)\s*([KMG]?)\z/i', $postLimitText, $postLimitMatch)) {
+    $postLimit = (int)$postLimitMatch[1] * match (strtoupper($postLimitMatch[2])) { 'K'=>1024, 'M'=>1024**2, 'G'=>1024**3, default=>1 };
+    $contentLength = filter_var($_SERVER['CONTENT_LENGTH'] ?? null, FILTER_VALIDATE_INT);
+    if ($contentLength !== false && $contentLength > $postLimit) {
+        flash_error('Your image is too large. Please choose a photo smaller than 5 MB.');
+        header('Location: /profile.php', true, 303);
+        exit;
+    }
+}
+
 check_csrf();
 $action = is_string($_POST['photo_action'] ?? null) ? $_POST['photo_action'] : '';
 try {
@@ -70,8 +93,12 @@ try {
         if (!is_array($upload) || !isset($upload['tmp_name']) || !is_uploaded_file((string)$upload['tmp_name'])) {
             throw new InvalidArgumentException('Choose a valid image from your device.');
         }
-        replace_user_profile_photo(db(), $userId, $upload, $storageDirectory, __DIR__);
-        flash('Profile photo updated.');
+        $replacement = replace_user_profile_photo(db(), $userId, $upload, $storageDirectory, __DIR__);
+        if (!$replacement['old_file_removed']) {
+            flash_error('Your new photo is active, but the previous image could not be cleaned up. Support has been notified.');
+        } else {
+            flash($replacement['replaced'] ? 'Profile photo changed successfully.' : 'Profile photo uploaded successfully.');
+        }
     } else {
         throw new InvalidArgumentException('Choose a photo action and try again.');
     }
@@ -83,7 +110,14 @@ try {
     exit;
 } catch (Throwable $error) {
     error_log((string)$error);
-    flash_error('The profile photo could not be saved. Please try again.');
+    $message = 'The profile photo could not be saved. Please try again.';
+    $technicalMessage = strtolower($error->getMessage());
+    if ($error instanceof RuntimeException && (str_contains($technicalMessage, 'storage') || str_contains($technicalMessage, 'stored') || str_contains($technicalMessage, 'saved'))) {
+        $message = 'Photo storage is temporarily unavailable. Please try again later.';
+    } elseif ($error instanceof RuntimeException && (str_contains($technicalMessage, 'process') || str_contains($technicalMessage, 'encoded') || str_contains($technicalMessage, 'decode'))) {
+        $message = 'Image processing failed. Please choose another photo.';
+    }
+    flash_error($message);
     header('Location: /profile.php', true, 303);
     exit;
 }

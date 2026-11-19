@@ -12,11 +12,18 @@ Content-hash query strings on the shared CSS and JavaScript assets make each cha
 
 - `database/migrations/005_profile_photos.sql` adds a nullable `users.profile_photo_key` column. It leaves existing users and records in place.
 - `public/profile-photo.php` checks the authenticated session identity; it does not accept a target user ID. Photo changes and removals require the current session's CSRF token.
-- The upload limit is 2 MiB, with JPEG, PNG and WebP input only. The server checks the upload status, actual byte count, `fileinfo` MIME, image header, dimensions (at most 12 million source pixels), and GD decoder result. Browser MIME and original filename are ignored.
+- The application limit is 5 MiB, with JPEG, PNG and WebP input only. The server checks the upload status, actual byte count, `fileinfo` MIME, image header, dimensions (at most 12 million source pixels), and GD decoder result. The browser and app-scoped Apache limits allow the multipart request overhead; the PHP application still rejects image files over 5 MiB. Browser MIME and original filename are ignored.
 - Images are center-cropped, decoded and re-encoded to a 512 by 512 WebP, which strips source metadata. Storage keys contain 24 bytes of randomness and are always `.webp` files.
 - The default `/var/lib/campusflow/profile-photos` directory is outside Apache's `/var/www/campusflow/public` document root. PHP owns the directory with mode `0750`; files use mode `0640`. The profile-photo endpoint serves only the current authenticated account's own image, with `nosniff` and private cache headers.
 - New image files are written before the database reference is changed. If the database update fails, the new file is deleted; after a successful replacement, the prior file is removed. Removal clears the database reference before unlinking the validated file.
 - Initials are the fallback. The avatar appears in profile settings, the dashboard greeting, and the desktop/mobile account navigation.
+- Photo selection and profile details use separate forms and explicit actions. Choosing a file previews the selected image and enables **Save new photo**; saving other profile fields cannot display a false photo-success message. Each saved image has a new opaque URL version and stale photo URLs are rejected, while private responses require cache revalidation.
+
+## Administrator portal implementation
+
+`https://admin.fuadsaary.me` routes to a dedicated administrator sign-in. Public administrator registration is not provided. The admin login checks the existing `users` table and its persisted `admin` role, reuses the shared CSRF and rate-limit protections, and regenerates the session on success. Protected admin pages recheck the role in MariaDB so a stale session cannot retain access after demotion. `scripts/promote-admin.php` promotes one existing username only when run locally on the server as root and after the exact typed confirmation; it does not set a password.
+
+The dashboard queries the live counts for students, request statuses, urgent work and response deadlines. Administrators can search/filter requests, view a detail page and status history, and post a status plus a student-visible response. The status, timeline row and notification are committed together; ordinary students remain limited to their own request IDs. Automated MariaDB verification for this release is pending CI and the deployment preflight. The live database currently has four student accounts and no administrators, so there is no authorized admin session for end-to-end browser verification yet.
 
 ## Apply and verify the production update
 

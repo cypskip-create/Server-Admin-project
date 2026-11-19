@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_regenerate_id(true);
             $_SESSION['user'] = $result['user'];
             $_SESSION['csrf'] = bin2hex(random_bytes(32));
-            header('Location: /dashboard.php');
+            header('Location: '.(is_admin_user($result['user']) ? '/admin.php' : '/dashboard.php'));
             exit;
         }
         $error = $result['status'] === 'throttled' ? 'Too many attempts. Wait 15 minutes before trying again.' : 'The username/email or password is incorrect.';

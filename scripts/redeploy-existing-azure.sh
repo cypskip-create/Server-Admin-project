@@ -13,6 +13,7 @@ revision="${1:-}"
 }
 app_dir=/var/www/campusflow
 site_conf=/etc/apache2/sites-available/campusflow.conf
+upload_limits_conf=/etc/apache2/conf-available/campusflow-upload-limits.conf
 backup_root=/root/campusflow-backups
 repo_url=https://github.com/cypskip-create/Server-Admin-project.git
 
@@ -21,6 +22,15 @@ repo_url=https://github.com/cypskip-create/Server-Admin-project.git
 [[ "${ID:-}" == ubuntu ]] || { echo "This redeploy script requires Ubuntu; detected ${ID:-unknown}." >&2; exit 1; }
 [[ -d "$app_dir/.git" && -s "$app_dir/.env" ]] || { echo 'CampusFlow installation or private configuration is missing; refusing to continue.' >&2; exit 1; }
 [[ -f "$site_conf" ]] || { echo 'CampusFlow Apache site configuration is missing; refusing to continue.' >&2; exit 1; }
+upload_conf_existed=0
+upload_conf_was_enabled=0
+if [[ -e "$upload_limits_conf" ]]; then
+  grep -q 'Scoped to CampusFlow only' "$upload_limits_conf" || { echo 'An unrelated upload-limit configuration already exists; refusing to overwrite it.' >&2; exit 1; }
+  grep -q 'php_admin_value upload_max_filesize 6M' "$upload_limits_conf" || { echo 'The existing CampusFlow upload-limit file differs from the expected settings; inspect it before redeployment.' >&2; exit 1; }
+  grep -q 'php_admin_value post_max_size 8M' "$upload_limits_conf" || { echo 'The existing CampusFlow upload-limit file has an unexpected POST limit; inspect it before redeployment.' >&2; exit 1; }
+  upload_conf_existed=1
+  [[ ! -e /etc/apache2/conf-enabled/campusflow-upload-limits.conf ]] || upload_conf_was_enabled=1
+fi
 git -C "$app_dir" remote get-url origin | grep -Fxq "$repo_url" || { echo 'The existing application remote does not match CampusFlow.' >&2; exit 1; }
 [[ -z "$(git -C "$app_dir" status --porcelain --untracked-files=no)" ]] || { echo 'The existing tracked application has local edits; refusing to overwrite them.' >&2; exit 1; }
 mariadb --batch --skip-column-names -e 'SELECT 1' >/dev/null
@@ -42,6 +52,27 @@ chmod 0600 "$backup_dir/campusflow-apache.conf"
 mariadb-dump --single-transaction --routines --triggers --events "$database_name" > "$backup_dir/campusflow_prod-before.sql"
 [[ -s "$backup_dir/campusflow_prod-before.sql" ]] || { echo 'Database backup is empty; refusing to continue.' >&2; exit 1; }
 chmod 0600 "$backup_dir/campusflow_prod-before.sql"
+if [[ "$upload_conf_existed" -eq 1 ]]; then
+  cp -a "$upload_limits_conf" "$backup_dir/campusflow-upload-limits.conf-before"
+  chmod 0600 "$backup_dir/campusflow-upload-limits.conf-before"
+else
+  printf 'absent\n' > "$backup_dir/campusflow-upload-limits.conf-before-state"
+  chmod 0600 "$backup_dir/campusflow-upload-limits.conf-before-state"
+fi
+user_ini_file="$app_dir/.user.ini"
+user_ini_existed=0
+user_ini_expected=$'upload_max_filesize=6M\npost_max_size=8M\nmax_file_uploads=10\nmax_execution_time=60\nmax_input_time=60'
+if [[ -e "$user_ini_file" ]]; then
+  [[ -f "$user_ini_file" && ! -L "$user_ini_file" ]] || { echo 'The existing app-local PHP settings are not a regular file; refusing to overwrite them.' >&2; exit 1; }
+  user_ini_actual="$(cat "$user_ini_file")"
+  [[ "$user_ini_actual" == "$user_ini_expected" ]] || { echo 'The existing app-local PHP settings differ from the CampusFlow photo limits; refusing to overwrite them.' >&2; exit 1; }
+  cp -a "$user_ini_file" "$backup_dir/campusflow-user.ini-before"
+  chmod 0600 "$backup_dir/campusflow-user.ini-before"
+  user_ini_existed=1
+else
+  printf 'absent\n' > "$backup_dir/campusflow-user.ini-before-state"
+  chmod 0600 "$backup_dir/campusflow-user.ini-before-state"
+fi
 echo "Private application and database backups created in $backup_dir."
 echo "Previous code revision: $previous_revision"
 
@@ -50,6 +81,8 @@ test_db="campusflow_release_test_${timestamp//[^0-9]/}_$$"
 test_db_created=0
 deploy_changed=0
 needs_apache_restart=0
+upload_config_changed=0
+user_ini_changed=0
 cleanup() {
   status=$?
   if [[ "$status" -ne 0 && "$deploy_changed" -eq 1 ]]; then
@@ -58,6 +91,23 @@ cleanup() {
       apachectl configtest && systemctl reload apache2 || true
     else
       echo "Automatic code rollback failed. Previous application backup: $backup_dir/application-before.tar.gz" >&2
+    fi
+  fi
+  if [[ "$status" -ne 0 && "$upload_config_changed" -eq 1 ]]; then
+    if [[ "$upload_conf_existed" -eq 1 ]]; then
+      cp -a "$backup_dir/campusflow-upload-limits.conf-before" "$upload_limits_conf"
+      if [[ "$upload_conf_was_enabled" -eq 1 ]]; then a2enconf campusflow-upload-limits >/dev/null || true; else a2disconf campusflow-upload-limits >/dev/null 2>&1 || true; fi
+    else
+      a2disconf campusflow-upload-limits >/dev/null 2>&1 || true
+      rm -f -- "$upload_limits_conf"
+    fi
+    apachectl configtest && systemctl reload apache2 || true
+  fi
+  if [[ "$status" -ne 0 && "$user_ini_changed" -eq 1 ]]; then
+    if [[ "$user_ini_existed" -eq 1 ]]; then
+      cp -a "$backup_dir/campusflow-user.ini-before" "$user_ini_file"
+    else
+      rm -f -- "$user_ini_file"
     fi
   fi
   if [[ "$test_db_created" -eq 1 ]]; then
@@ -105,6 +155,38 @@ photo_dir_real="$(realpath -m "$photo_dir")"
 [[ "$photo_dir_real" != /var/www/campusflow/public && "$photo_dir_real" != /var/www/campusflow/public/* ]] || { echo 'Profile-photo storage cannot be inside the web root.' >&2; exit 1; }
 [[ ! -L "$photo_dir" ]] || { echo 'Profile-photo storage cannot be a symbolic link.' >&2; exit 1; }
 install -d -o www-data -g www-data -m 0750 "$photo_dir"
+user_ini_changed=1
+cat > "$user_ini_file" <<'EOF'
+upload_max_filesize=6M
+post_max_size=8M
+max_file_uploads=10
+max_execution_time=60
+max_input_time=60
+EOF
+chmod 0640 "$app_dir/.user.ini"
+if apachectl -M 2>/dev/null | grep -Eq 'php(_[0-9]+)?_module'; then
+  if [[ "$upload_conf_existed" -eq 0 ]]; then
+    upload_config_changed=1
+    cat > "$upload_limits_conf" <<EOF
+# Scoped to CampusFlow only; unrelated PHP applications retain their settings.
+<Directory "$app_dir/public">
+    <IfModule php_module>
+        php_admin_value upload_max_filesize 6M
+        php_admin_value post_max_size 8M
+        php_admin_value max_file_uploads 10
+        php_admin_value max_execution_time 60
+        php_admin_value max_input_time 60
+    </IfModule>
+</Directory>
+EOF
+    chmod 0640 "$upload_limits_conf"
+  fi
+  upload_config_changed=1
+  a2enconf campusflow-upload-limits >/dev/null
+elif ! systemctl list-units --type=service --state=active --no-legend 'php*-fpm.service' 2>/dev/null | grep -q 'php.*-fpm'; then
+  echo 'No Apache PHP module or active PHP-FPM service is available for the scoped upload limits.' >&2
+  exit 1
+fi
 chown root:www-data "$app_dir/.env"
 chmod 0640 "$app_dir/.env"
 chown -R root:www-data "$app_dir"
@@ -135,6 +217,9 @@ for host in fuadsaary.me www.fuadsaary.me students.fuadsaary.me admin.fuadsaary.
   [[ "$http_status" == 301 ]] || { echo "Unexpected HTTP status for $host: $http_status (expected 301)." >&2; exit 1; }
 done
 curl --fail --silent --show-error --resolve students.fuadsaary.me:443:127.0.0.1 https://students.fuadsaary.me/login.php | grep -q 'Sign in'
+curl --fail --silent --show-error --resolve admin.fuadsaary.me:443:127.0.0.1 https://admin.fuadsaary.me/admin-login.php | grep -q 'Administrator sign in'
+admin_gate_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --resolve admin.fuadsaary.me:443:127.0.0.1 https://admin.fuadsaary.me/admin.php)"
+[[ "$admin_gate_status" == 302 ]] || { echo "Anonymous admin dashboard returned $admin_gate_status, expected a login redirect." >&2; exit 1; }
 for asset in style.css app.js; do
   curl --fail --silent --show-error --resolve students.fuadsaary.me:443:127.0.0.1 "https://students.fuadsaary.me/assets/$asset" >/dev/null
 done
@@ -145,4 +230,5 @@ echo "CampusFlow redeployment succeeded at $revision."
 echo "Migration 005 is applied; uploaded photos use private storage at $photo_dir."
 echo "Application backup: $backup_dir/application-before.tar.gz"
 echo "Database backup: $backup_dir/campusflow_prod-before.sql"
-echo 'Apache and MariaDB are active; TLS route checks, versioned assets and unauthenticated-photo authorization passed.'
+echo 'Apache and MariaDB are active; TLS routes, admin login, protected anonymous admin dashboard, versioned assets and unauthenticated-photo authorization passed.'
+echo 'CampusFlow photo upload limits are 6M per file and 8M per POST; the app accepts up to 5 MiB.'
