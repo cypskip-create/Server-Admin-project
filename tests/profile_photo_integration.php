@@ -69,7 +69,9 @@ try {
     $assert(profile_photo_key_is_valid($firstKey) && $row->fetchColumn() === $firstKey && is_file($storedPath), 'successful upload stores a random private file and matching database reference');
     $imageInfo = getimagesize($storedPath);
     $assert(($imageInfo['mime'] ?? '') === 'image/webp' && $imageInfo[0] === 512 && $imageInfo[1] === 512, 'uploaded image is safely decoded, square-cropped and normalized to WebP');
-    $assert(basename($storedPath) === $firstKey && !file_exists($public.DIRECTORY_SEPARATOR.'profile.php'), 'traversal filenames never control the output path or executable web files');
+    $realStorage = realpath($storage);
+    $realStoredPath = realpath($storedPath);
+    $assert($realStorage !== false && $realStoredPath !== false && dirname($realStoredPath) === $realStorage && basename($realStoredPath) === $firstKey && !is_executable($realStoredPath), 'traversal filenames never control the output path or create executable files');
 
     $otherRow = $pdo->prepare('SELECT profile_photo_key FROM users WHERE id=?');
     $otherRow->execute([$otherId]);
@@ -126,3 +128,4 @@ try {
     $_SESSION = [];
     $_POST = [];
 }
+
