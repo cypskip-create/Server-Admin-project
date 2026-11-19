@@ -30,7 +30,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: mbstring, pdo_mysql
+          extensions: gd, mbstring, pdo_mysql
       - name: Apply schema migrations
         env:
           DB_HOST: 127.0.0.1
@@ -45,5 +45,5 @@ jobs:
           TEST_DB_USER: campusflow
           TEST_DB_PASS: campusflow-test
         run: |
-          bash -n scripts/setup-kali.sh scripts/deploy-ubuntu.sh scripts/issue-zerossl.sh scripts/test.sh
+          bash -n scripts/setup-kali.sh scripts/deploy-ubuntu.sh scripts/redeploy-existing-azure.sh scripts/issue-zerossl.sh scripts/test.sh
           bash scripts/test.sh

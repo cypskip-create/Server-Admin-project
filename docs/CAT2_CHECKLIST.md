@@ -16,7 +16,7 @@ Status meanings: **Implemented** means repository code or explanation exists; **
 |---|---:|---|---|---|
 | Signup/login pages pushed and cloned | 3 | `public/signup.php`, `public/login.php`; GitHub remote contains the project | Registration/authentication integration tests passed in CI and on Azure | Screenshot clone/pull and signup/login pages from Kali. |
 | Install/configure MariaDB | 1 | `scripts/setup-kali.sh`; CI provisions MariaDB 11 and Azure runs MariaDB 10.11 | MariaDB integration suite passed in both CI and Azure | Show Kali MariaDB service status and PHP PDO module. |
-| Create CAT2 database | 1 | `scripts/migrate.php` and ordered migrations | CI applied migrations 001–004 into `CAT2`; Azure applied them to its separate `campusflow_prod` DB | Show `SHOW DATABASES`, `SHOW TABLES`, and migration ledger from Kali CAT2. |
+| Create CAT2 database | 1 | `scripts/migrate.php` and ordered migrations | CI workflow is configured to apply migrations 001–005 into `CAT2`; the next run for the photo release is pending. Azure applies CampusFlow migrations to its separate `campusflow_prod` DB. Migration 005 adds only a nullable photo key. | Show `SHOW DATABASES`, `SHOW TABLES`, and migration ledger from Kali CAT2. |
 | Connect PHP signup/login to database | 3 | PDO connection/config in `config/db.php`, AuthService and migration runner | Valid/invalid registration, uniqueness, hash, login and throttling checks passed | Demonstrate registration and login on the Kali-hosted site. |
 | Register `studentCNSA` and `studentCNSB` | 4 | Signup accepts the rubric usernames; test creates both username patterns with unique suffixes | Registration and database uniqueness tests passed | Register the exact two usernames through the real signup form on Kali. |
 | Authenticate both users | 4 | AuthService and session-backed portal | Integration suite checks valid authentication for both student account patterns and rejects wrong passwords | Log in separately with both exact registered accounts and capture their protected page. |
@@ -26,4 +26,3 @@ Status meanings: **Implemented** means repository code or explanation exists; **
 ## Current evidence boundary
 
 GitHub Actions run [44414494877](https://github.com/cypskip-create/Server-Admin-project/actions/runs/44414494877) passed the PHP syntax, security, MariaDB integration and Bash syntax checks for commit `2dca2e0`. The Azure production integration suite also passed. **No Kali VM session or screenshots were captured in this deployment**, so the Kali-specific evidence items remain open until the students perform those steps on Kali.
-

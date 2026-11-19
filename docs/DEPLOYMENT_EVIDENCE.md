@@ -10,7 +10,7 @@ This log records observed results for the Azure group project. Implemented code,
 | OS/capacity | Azure Run Command: `/etc/os-release`, `uname -r`, `free -h`, `df -h /` | Ubuntu 24.04.5 LTS, kernel `7.0.0-1017-azure`, Standard_B2als_v2, 2 vCPU/4 GiB RAM; approximately 3.8 GiB RAM and 26 GiB free on the 30 GiB OS disk at inspection. |
 | Initial workload inventory | Run Command: service/package/listener/path inventory; `systemctl`, `ss -lntup`, `ls -la /var/www /etc/apache2/sites-enabled`, `ufw status verbose` | No existing `/var/www`, Apache site directory, web/database listener, or Apache/PHP/MariaDB stack. UFW inactive. The default Apache site was retained after deployment; no existing university app or DB was overwritten. |
 | Azure public IPv4 | Azure Public IP resource `cyprianServer-ip` configuration | `102.37.155.177`, Standard SKU, Static allocation; no IPv6 configured. |
-| Azure NSG | Azure portal `cyprianServer-nsg` inbound rules, after the user's approval | Rule `1010 default-allow-ssh` remains restricted to `197.232.165.94`; added `1020 allow-http-campusflow` TCP/80 Any→Any Allow and `1030 allow-https-campusflow` TCP/443 Any→Any Allow. No database rule added. |
+| Azure network security | Azure portal review, followed by external route checks | Web access was authorized and verified through the public application checks below. Existing SSH remains restricted to its approved source. Exact rule identifiers, source addresses, and network-rule details are retained only in private submission evidence and omitted from this public repository. No database access was exposed. |
 | DNS provider records | Authenticated Namecheap Advanced DNS view | `@`, `students`, and `admin` A records point to `102.37.155.177`; `www` CNAME points to `fuadsaary.me`. Existing email forwarding and SPF record were preserved; nameservers were not changed. |
 | Public DNS | Google Public DNS JSON queries for A/CNAME and independent external HTTP probes | All four names resolve to `102.37.155.177`; `www` CNAME resolves to apex. The target and host routing were checked independently from several Check-Host regions. |
 | Public HTTP | Check-Host HTTP probes: apex request `58d90ef5k8c6`; `www`, `students`, and `admin` probes | Apex returned HTTP `200` (nodes `ru1`, `ua1`, `us5`); `www` returned `301` (nodes `id1`, `ir3`, `ru1`); `students` returned `302` (nodes `it2`, `md1`, `se1`); `admin` returned `302` (nodes `de1`, `pl1`, `tr1`). These redirects are expected for anonymous portal routes. |
@@ -39,10 +39,9 @@ This log records observed results for the Azure group project. Implemented code,
 ## Screenshot and command evidence to retain
 
 - Azure VM Overview, showing the existing VM and Running state.
-- Azure NSG inbound rules, showing only the approved web rules plus unchanged restricted SSH.
+- Redacted Azure network-security evidence should be retained privately for submission; this public repository intentionally omits rule identifiers and SSH source addresses.
 - Namecheap Advanced DNS records and the unchanged mail/SPF view.
 - Redacted terminal output: OS/version, `apachectl configtest`, service status, public DNS checks, host-header HTTP responses, migrations/tables, grants, and the test-suite summary.
 - TLS evidence: `openssl x509` subject/issuer/dates/SANs, HTTPS responses, HTTP redirects, Secure cookie, HSTS header, renewal cron, and Apache reload hook were observed during deployment. Capture screenshots/terminal output from the student's own evidence collection where required.
 - Browser evidence for main landing, student signup/login/dashboard, request tracking/notifications, admin authorization/status workflow.
 - Separate Kali VM screenshots for CAT 2; Azure screenshots do not count as Kali VM evidence.
-

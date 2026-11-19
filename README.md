@@ -5,7 +5,7 @@ A PHP 8.2+/MariaDB student service portal for the Server Administration CAT 2 an
 ## Run locally
 
 1. Install PHP with `pdo_mysql` and `mbstring`, MariaDB, and Apache (Kali instructions in `docs/KALI_SETUP.md`).
-2. Create database `CAT2`, copy `.env.example` to `.env` and set credentials, then apply all migrations with `php scripts/migrate.php` using a migration-capable database account. This applies migrations `001`–`004` exactly once.
+2. Create database `CAT2`, copy `.env.example` to `.env` and set credentials, then apply all migrations with `php scripts/migrate.php` using a migration-capable database account. This applies migrations `001`–`005` exactly once. Install PHP GD (`php-gd`) and set `PROFILE_PHOTO_DIR` to a writable directory outside `public/` for profile photos.
 3. Set Apache `DocumentRoot` to the `public/` directory. For a quick PHP development server from repository root: `php -S 127.0.0.1:8080 -t public` (requires MariaDB and `.env`).
 4. Register `studentCNSA`, `studentCNSB`, `studentMiguel`, and `studentHaggai` through the real signup page as needed; no users are pre-seeded.
 
@@ -16,7 +16,9 @@ The first account is not automatically an administrator. To grant admin access o
 - Student registration/sign-in, session ID rotation, logout, non-empty CSRF token checks, stricter server-side validation and persistent IP/identity login throttling.
 - Private dashboard with status chart, profile/password editing, service request submission/detail pages, ownership checks, unique tracking IDs, server-side deterministic priority recommendations, response SLA tracking and a status history timeline.
 - Role-gated admin request queue; status changes update the response SLA, append history and create persistent in-app notifications.
-- Responsive interface and deployment/evidence guidance in `docs/`.
+- Mobile-first responsive navigation, dashboard, request cards, forms and landing page; accessible reduced-motion and keyboard behavior.
+- Private profile photos with authenticated ownership, CSRF protection, 2 MB and image-dimension limits, decoded/re-encoded 512px WebP output, replacement/removal, and initials fallback.
+- Deployment and assessment evidence guidance in `docs/`.
 
 ## Architecture and assessment
 
@@ -30,5 +32,4 @@ The deployed TLS certificate uses free ZeroSSL ACME, covers the apex plus `www`,
 
 ## Automated checks
 
-Run `bash scripts/test.sh`. It performs PHP syntax checks, CSRF/authorization unit checks, then MariaDB integration checks when `TEST_DB_HOST`, `TEST_DB_NAME`, and `TEST_DB_USER` are configured. GitHub Actions provisions MariaDB and runs the full suite. Local syntax/unit results do not verify a VM, VPS, DNS or HTTPS deployment.
-
+Run `bash scripts/test.sh`. It performs PHP syntax checks, CSRF/authorization and photo validation checks, then authentication, profile-photo, and MariaDB integration checks when `TEST_DB_HOST`, `TEST_DB_NAME`, and `TEST_DB_USER` are configured. GitHub Actions provisions MariaDB with GD and runs the full suite. Local syntax/unit results do not verify a VM, VPS, DNS or HTTPS deployment. For an existing Azure installation, use `scripts/redeploy-existing-azure.sh <current-main-SHA>` only after reviewing the backup, migration and rollback behavior in `docs/MOBILE_AND_PROFILE_PHOTO.md`.

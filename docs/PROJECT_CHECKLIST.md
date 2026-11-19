@@ -21,3 +21,11 @@
 
 Shared workflow: branch from `main`, make focused commits, review the partner's changes, and record the real discussion and review. Do not invent contributions.
 
+## Additional work beyond the 30-mark rubric
+
+| Feature | Implemented in code | Automated test | Production/browser verification |
+|---|---|---|---|
+| Mobile-first layouts and accessible navigation | Updated shared header, breakpoint, card layouts, responsive forms, focus states, Escape handling and reduced-motion support | CSS/JavaScript/PHP checks run locally; viewport-by-viewport browser evidence is recorded in `MOBILE_AND_PROFILE_PHOTO.md` only after observed | Pending deployment to the existing Azure VM and responsive checks at all nine requested widths. Browser emulation must not be presented as physical iPhone/Android testing. |
+| Private profile photos | Migration 005, authenticated photo endpoint, CSRF, decoded/re-encoded WebP files in private storage, session-based ownership, replacement/removal and initials fallback | Local photo security/validation unit checks passed; MariaDB integration and CI result pending | Pending production migration, GD/storage configuration and a verified upload/replace/remove cycle. |
+
+Additional features demonstrate implementation and do not guarantee marks beyond the assessment rubric. Keep deployed verification separate from code presence and local tests.

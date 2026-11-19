@@ -40,7 +40,7 @@ done
 echo "Configuration backup directory: $backup_dir"
 
 sudo env DEBIAN_FRONTEND=noninteractive apt-get update
-sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y apache2 mariadb-server php php-cli libapache2-mod-php php-mysql php-mbstring git curl
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y apache2 mariadb-server php php-cli libapache2-mod-php php-mysql php-mbstring php-gd git curl
 sudo systemctl enable --now apache2 mariadb
 
 database_exists="$(sudo mariadb --batch --skip-column-names -e "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$db_name'")"
@@ -58,6 +58,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON $db_name.* TO '$db_user'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
 sudo env DB_HOST=localhost DB_NAME="$db_name" DB_USER=root DB_PASS='' php "$repo_dir/scripts/migrate.php"
+sudo install -d -o root -g www-data -m 0750 /var/lib/campusflow
+sudo install -d -o www-data -g www-data -m 0750 /var/lib/campusflow/profile-photos
 
 sudo tee "$repo_dir/.env" >/dev/null <<EOF
 APP_ENV=development
@@ -74,6 +76,7 @@ DB_NAME=$db_name
 DB_USER=$db_user
 DB_PASS="$db_secret"
 SESSION_SECURE=false
+PROFILE_PHOTO_DIR=/var/lib/campusflow/profile-photos
 EOF
 unset db_secret
 sudo chown root:www-data "$repo_dir/.env"
@@ -120,7 +123,8 @@ if ! grep -Eq "(^|[[:space:]])$students_host([[:space:]]|$)" /etc/hosts; then
   printf '%s\n' "$hosts_line" | sudo tee -a /etc/hosts >/dev/null
 fi
 sudo mariadb "$db_name" -e 'SHOW TABLES; SELECT migration,applied_at FROM schema_migrations ORDER BY migration;'
-[[ "$(sudo mariadb --batch --skip-column-names "$db_name" -e 'SELECT COUNT(*) FROM schema_migrations')" == 4 ]]
+[[ "$(sudo mariadb --batch --skip-column-names "$db_name" -e 'SELECT COUNT(*) FROM schema_migrations')" == 5 ]]
+php -m | grep -qi '^gd$'
 curl --fail --silent --show-error -H "Host: $site_host" http://127.0.0.1/ >/dev/null
 curl --silent --show-error -I -H "Host: $students_host" http://127.0.0.1/ | grep -qi 'Location: /login.php'
 curl --silent --show-error -I -H "Host: $admin_host" http://127.0.0.1/ | grep -qi 'Location: /admin.php'

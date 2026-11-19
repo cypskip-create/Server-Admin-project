@@ -10,12 +10,16 @@ The VM now runs Apache 2.4.58, PHP 8.3.6, and MariaDB 10.11.14. CampusFlow is de
 
 ## Migrations and application configuration
 
-All four ordered migrations were applied and recorded in `schema_migrations`:
+The initial four ordered migrations were applied and recorded in `schema_migrations`:
 
 1. `001_schema.sql` — users, service requests, request history, and baseline schema.
 2. `002_login_attempts.sql` — persistent throttling in the `login_attempts` table.
 3. `003_sla_notifications.sql` — recommended priority, SLA fields, and database notifications.
 4. `004_login_attempt_cleanup.sql` — cleanup index for old login-attempt buckets.
+
+Migration `005_profile_photos.sql` adds a nullable photo storage key to `users`; it is incremental and does not recreate accounts. Run `scripts/redeploy-existing-azure.sh <current-main-SHA>` for an existing installation. It verifies Ubuntu and the expected CampusFlow DB, stores mode-`0600` application/config and MariaDB backups under `/root/campusflow-backups/`, applies and tests the release against a temporary MariaDB database, applies only pending migrations, and rolls the code back to its prior commit if post-deployment checks fail. Review the actual backup directory and command output before recording deployment evidence.
+
+Profile photos require PHP GD. The update script installs `php-gd` only when missing. It stores user images under `/var/lib/campusflow/profile-photos` (outside Apache's document root) with `www-data` ownership and `0750` directory permissions. `.env` contains only the private storage path as `PROFILE_PHOTO_DIR`; database credentials are not part of the release. Apache serves the image only through the authenticated `public/profile-photo.php` endpoint. The release changes Apache's app code and reloads Apache; it does not replace the existing vhosts, alter DNS/NSG rules, stop the VM, or change TLS/ACME files.
 
 The deployed database contains `login_attempts`, `notifications`, `request_status_history`, `schema_migrations`, `service_requests`, and `users`. A generated database password is stored only in root-owned `/var/www/campusflow/.env` (mode `0640`, group `www-data`); it was not printed, screenshotted, or committed.
 
@@ -43,7 +47,7 @@ Namecheap Advanced DNS contains:
 
 The existing email-forwarding setting and SPF record were left unchanged; nameservers were not changed. Google Public DNS checks and independent public probes resolved all required names to the Azure IP. See `DNS_CONFIGURATION.md` and `DEPLOYMENT_EVIDENCE.md` for the dated results.
 
-With the user's approval, the existing `cyprianServer-nsg` allows inbound TCP 80 and 443 from Internet. Existing SSH rule `default-allow-ssh` remains restricted to its previous source (`197.232.165.94`); no database port was opened. The VM remained Running during deployment. Apache now serves TLS on 443 and redirects all four HTTP hostnames to HTTPS; `www` then redirects to the apex.
+With the user's approval, the existing network security configuration was updated to permit public web access. Existing SSH access remains restricted to its approved source; detailed source addresses and rule identifiers are omitted from this public runbook and should be retained only in private submission evidence. No database port was opened. The VM remained Running during deployment. Apache serves TLS and redirects all four HTTP hostnames to HTTPS; `www` then redirects to the apex.
 
 ## Reproduction and verification commands
 
@@ -68,7 +72,7 @@ sudo mariadb campusflow_prod -e 'SHOW TABLES; SELECT migration,applied_at FROM s
 sudo mariadb campusflow_prod -e 'SHOW COLUMNS FROM login_attempts;'
 ```
 
-The deployed PHP lint, security checks, and MariaDB integration suite passed using `bash scripts/test.sh`; the GitHub Actions run for commit `2dca2e0` also passed. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md`.
+The deployed PHP lint, security checks, and MariaDB integration suite passed using `bash scripts/test.sh`; the GitHub Actions run for commit `2dca2e0` also passed. The test suite covers CSRF and admin authorization, registration and login, hashed passwords, brute-force throttling, priority recommendations, SLA timestamps, request ownership, history and persisted notifications. Profile-photo unit and MariaDB tests cover validation, ownership, private WebP output, replacement, removal and reference consistency. Current results and limitations are kept in `DEPLOYMENT_EVIDENCE.md` and `MOBILE_AND_PROFILE_PHOTO.md`.
 
 ## Free ZeroSSL ACME deployment result
 
@@ -77,4 +81,3 @@ The approved free route issued one 90-day SAN certificate for all four names wit
 The initial ACME attempt stopped before registration because of an upstream acme.sh code-shape change. After changing the temporary EAB persistence guard to use no-ops and verifying shell syntax, certificate issuance and all checks passed. The Azure Run Command also reported a trailing carriage-return error after the success message; the repository script was normalized to LF in commit `2dca2e0`, CI passed, and independent read-only checks confirmed the live TLS setup.
 
 Before each release, back up the application database and record the deployed Git SHA. Roll back code to the previous verified SHA and restore a matching database backup if a migration needs rollback; do not blindly reverse data migrations.
-

@@ -31,4 +31,3 @@ dig @8.8.8.8 +short A www.fuadsaary.me
 The expected result for the three A records is `102.37.155.177`; `www` should be a CNAME to `fuadsaary.me` and resolve to that same IPv4. If the static Public IP resource is replaced, update the A records and repeat independent DNS and HTTP checks. Do not remove or replace email records when editing this zone.
 
 TLS is installed for all four names. The HTTPS certificate and redirect results are documented in `SSL_CONFIGURATION.md` and `DEPLOYMENT_EVIDENCE.md`; DNS resolution alone is not the certificate evidence.
-

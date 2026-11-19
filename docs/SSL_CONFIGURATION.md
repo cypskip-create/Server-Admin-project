@@ -45,4 +45,3 @@ curl -sSI https://students.fuadsaary.me/login.php | grep -iE '^(set-cookie:|stri
 ```
 
 Confirm all four SANs and valid dates, `301` HTTP→HTTPS redirects, a Secure session cookie, HSTS, and a daily acme.sh cron entry with Apache reload configured. Renewal is automatic, but it still needs monitoring. For a renewal rehearsal, follow the staging/test option appropriate to the installed acme.sh version and confirm the deploy/reload hook without replacing a working production certificate. If ZeroSSL rejects account registration because the account contact is unverified, stop and have the account owner verify it; do not use a paid order or bypass the check.
-

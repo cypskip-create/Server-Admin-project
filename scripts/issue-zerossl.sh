@@ -173,4 +173,3 @@ crontab -u root -l | grep -F -- '--cron'
 echo '--- ZeroSSL certificate ---'
 openssl x509 -in "$cert" -noout -subject -issuer -dates -ext subjectAltName
 echo 'HTTPS, HTTP redirects, hostname SANs, HSTS, Secure session cookie and renewal cron configuration passed.'
-

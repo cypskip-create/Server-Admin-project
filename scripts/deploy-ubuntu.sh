@@ -45,7 +45,7 @@ echo "Configuration backup directory: $backup_dir"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y apache2 mariadb-server php php-cli libapache2-mod-php php-mysql php-mbstring git curl openssl
+apt-get install -y apache2 mariadb-server php php-cli libapache2-mod-php php-mysql php-mbstring php-gd git curl openssl
 systemctl enable --now apache2 mariadb
 
 # Never reuse an existing database or database account. This app uses its own
@@ -72,6 +72,8 @@ SQL
 # it applies all ordered migrations, including login_attempts, before runtime
 # access is limited to CRUD on this one schema.
 DB_HOST=localhost DB_NAME="$db_name" DB_USER=root DB_PASS='' php "$app_dir/scripts/migrate.php"
+install -d -o root -g www-data -m 0750 /var/lib/campusflow
+install -d -o www-data -g www-data -m 0750 /var/lib/campusflow/profile-photos
 
 cat > "$app_dir/.env" <<EOF
 APP_ENV=production
@@ -88,6 +90,7 @@ DB_NAME=$db_name
 DB_USER=$db_user
 DB_PASS=$db_secret
 SESSION_SECURE=false
+PROFILE_PHOTO_DIR=/var/lib/campusflow/profile-photos
 EOF
 unset db_secret
 chown root:www-data "$app_dir/.env"
@@ -150,8 +153,10 @@ systemctl reload apache2
 echo '--- Applied migrations ---'
 mariadb --batch --skip-column-names "$db_name" -e 'SELECT migration FROM schema_migrations ORDER BY migration;'
 migration_count="$(mariadb --batch --skip-column-names "$db_name" -e 'SELECT COUNT(*) FROM schema_migrations')"
-[[ "$migration_count" == 4 ]] || { echo "Expected four migrations, found $migration_count." >&2; exit 1; }
+[[ "$migration_count" == 5 ]] || { echo "Expected five migrations, found $migration_count." >&2; exit 1; }
 mariadb "$db_name" -e 'SHOW TABLES;'
+mariadb --batch --skip-column-names "$db_name" -e 'SHOW COLUMNS FROM users LIKE "profile_photo_key";' | grep -q profile_photo_key
+php -m | grep -qi '^gd$' || { echo 'PHP GD is required for secure profile photo processing.' >&2; exit 1; }
 
 curl --fail --silent --show-error -H "Host: $domain" http://127.0.0.1/ >/dev/null
 curl --silent --show-error -I -H "Host: $students_host" http://127.0.0.1/ | grep -qi "Location: /login.php"

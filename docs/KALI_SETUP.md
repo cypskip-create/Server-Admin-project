@@ -11,7 +11,7 @@ cd /var/www/campusflow
 bash scripts/setup-kali.sh
 ```
 
-The script installs Apache, MariaDB and required PHP packages; creates `CAT2` and a restricted app user; applies all four migrations using a migration ledger; writes `.env` without committing it; configures Apache and a local `campusflow.local` host; then checks Apache configuration and the landing-page HTTP response. If your VM has a custom MariaDB root password instead of socket authentication, adapt the migration invocation inside the script before running it.
+The script installs Apache, MariaDB and required PHP packages including GD; creates `CAT2` and a restricted app user; applies all five migrations using a migration ledger; prepares private photo storage under `/var/lib/campusflow/profile-photos`; writes `.env` without committing it; configures Apache and a local `campusflow.local` host; then checks Apache configuration, the migration ledger, GD availability and the landing-page HTTP response. If your VM has a custom MariaDB root password instead of socket authentication, adapt the migration invocation inside the script before running it.
 
 Check services and schema:
 
