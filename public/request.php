@@ -7,6 +7,8 @@ if ($isAdmin) require_admin();
 $id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
 $id = is_int($id) && $id > 0 ? $id : 0;
 $errors = [];
+$formStatus = null;
+$formNote = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$isAdmin) {
@@ -14,27 +16,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit('Administrator access required.');
     }
     check_csrf();
-    $newStatus = is_string($_POST['status'] ?? null) ? $_POST['status'] : '';
-    $note = is_string($_POST['admin_note'] ?? null) ? trim($_POST['admin_note']) : '';
-    if ($id < 1 || !in_array($newStatus, ADMIN_REQUEST_STATUSES, true)) {
+    $formStatus = is_string($_POST['status'] ?? null) ? $_POST['status'] : '';
+    $formNote = is_string($_POST['admin_note'] ?? null) ? trim($_POST['admin_note']) : '';
+    if ($id < 1 || !in_array($formStatus, ADMIN_REQUEST_STATUSES, true)) {
         $errors[] = 'Choose a valid request status.';
-    } elseif (mb_strlen($note, 'UTF-8') > 225) {
+    } elseif (mb_strlen($formNote, 'UTF-8') > 225) {
         $errors[] = 'Response must be 225 characters or fewer.';
+    } elseif ($formStatus === 'declined' && $formNote === '') {
+        $errors[] = 'Add a reason before declining this request.';
     } else {
         try {
-            $currentQuery = db()->prepare('SELECT status FROM service_requests WHERE id=?');
-            $currentQuery->execute([$id]);
-            $currentStatus = $currentQuery->fetchColumn();
-            if ($currentStatus === false) {
-                http_response_code(404);
-                $errors[] = 'This request could not be found.';
-            } elseif ($currentStatus === $newStatus && $note === '') {
-                $errors[] = 'Choose a different status or add a response before saving.';
-            } elseif (!update_request_status(db(), $id, $userId, $newStatus, $note)) {
+            $result = update_request_status(db(), $id, $userId, $formStatus, $formNote);
+            if ($result === null) {
                 http_response_code(404);
                 $errors[] = 'This request could not be found.';
             } else {
-                flash('Request update saved and the student has been notified.');
+                $statusLabel = ucwords(str_replace('_', ' ', $result['new_status']));
+                if ($result['status_changed']) {
+                    flash('Request status updated to '.$statusLabel.' and the student has been notified.');
+                } else {
+                    flash('Response saved. The status remains '.$statusLabel.'. The student has been notified.');
+                }
                 header('Location: /request.php?id='.$id, true, 303);
                 exit;
             }
@@ -68,6 +70,7 @@ $history = $historyQuery->fetchAll();
 $due = !empty($request['sla_due_at']) ? strtotime((string)$request['sla_due_at']) : null;
 $responded = !empty($request['first_response_at']) ? strtotime((string)$request['first_response_at']) : null;
 $sla = $responded ? ($due && $responded <= $due ? 'met' : 'breached') : ($due && time() > $due ? 'breached' : 'on track');
+$selectedStatus = is_string($formStatus) && in_array($formStatus, ADMIN_REQUEST_STATUSES, true) ? $formStatus : $request['status'];
 page_start('Request '.e($request['tracking_id']));
 ?>
 <div class="row"><div><div class="eyebrow">TRACKING ID · <?=e($request['tracking_id'])?></div><h1><?=e($request['title'])?></h1></div><a href="<?=$isAdmin?'/admin.php':'/requests.php'?>">← <?=$isAdmin?'Admin dashboard':'All requests'?></a></div>
@@ -88,16 +91,17 @@ page_start('Request '.e($request['tracking_id']));
     <?php if ($isAdmin): ?>
         <section class="panel admin-response-panel" aria-labelledby="admin-response-title">
             <h2 id="admin-response-title">Update this request</h2>
-            <p class="hint">Status changes and your response are saved together and shown to the student.</p>
+            <p class="hint">Choose a new status to update progress. Keep the current status to send a response without changing progress.</p>
             <form method="post" action="/request.php?id=<?=e($id)?>">
                 <input type="hidden" name="csrf" value="<?=e(csrf())?>">
                 <label for="admin-request-status">Status
-                    <select id="admin-request-status" name="status" required><?php foreach (ADMIN_REQUEST_STATUSES as $status): ?><option value="<?=e($status)?>" <?=$status === $request['status'] ? 'selected' : ''?>><?=e(ucwords(str_replace('_',' ',$status)))?></option><?php endforeach; ?></select>
+                    <select id="admin-request-status" name="status" data-current-status="<?=e($request['status'])?>" required><?php foreach (ADMIN_REQUEST_STATUSES as $status): ?><option value="<?=e($status)?>" <?=$selectedStatus === $status ? 'selected' : ''?>><?=e(ucwords(str_replace('_',' ',$status)))?></option><?php endforeach; ?></select>
                 </label>
-                <label for="admin-note">Response to the student <span class="hint">(optional, 225 characters maximum; appears in the student's timeline and notifications)</span>
-                    <textarea id="admin-note" name="admin_note" rows="4" maxlength="225" placeholder="Write a short update for the student"></textarea>
+                <p id="admin-status-guidance" class="hint" aria-live="polite"></p>
+                <label for="admin-note">Response to the student <span class="hint">(225 characters maximum; required when declining; appears in the student's timeline and notifications)</span>
+                    <textarea id="admin-note" name="admin_note" rows="4" maxlength="225" aria-describedby="admin-status-guidance" placeholder="Write a short update for the student"><?=e($formNote)?></textarea>
                 </label>
-                <button class="button" type="submit">Save update and notify student</button>
+                <button class="button" id="admin-update-submit" type="submit">Save response or update status</button>
             </form>
         </section>
     <?php endif; ?>
@@ -105,7 +109,7 @@ page_start('Request '.e($request['tracking_id']));
         <?php if (!$history): ?><p class="hint">No status history is available.</p><?php else: ?>
             <ol class="timeline">
                 <?php foreach ($history as $item): ?>
-                    <li><b><?php if ($item['old_status']): ?><?=e(ucwords(str_replace('_',' ',$item['old_status'])))?> → <?php endif; ?><?=e(ucwords(str_replace('_',' ',$item['new_status'])))?></b><?php if ($item['note']): ?><p><?=e($item['note'])?></p><?php endif; ?><small><?=e($item['created_at'])?> · <?=e($item['role']==='admin'?'Administrator':'Student')?></small></li>
+                    <li><b><?php if ($item['old_status'] && $item['old_status'] === $item['new_status']): ?>Administrator response · status unchanged (<?=e(ucwords(str_replace('_',' ',$item['new_status'])))?>)<?php elseif ($item['old_status']): ?><?=e(ucwords(str_replace('_',' ',$item['old_status'])))?> → <?=e(ucwords(str_replace('_',' ',$item['new_status'])))?><?php else: ?><?=e(ucwords(str_replace('_',' ',$item['new_status'])))?><?php endif; ?></b><?php if ($item['note']): ?><p><?=e($item['note'])?></p><?php endif; ?><small><?=e($item['created_at'])?> · <?=e($item['role']==='admin'?'Administrator':'Student')?></small></li>
                 <?php endforeach; ?>
             </ol>
         <?php endif; ?>

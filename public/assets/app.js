@@ -120,4 +120,31 @@
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     }, { once: true });
   }
+
+  const requestStatus = document.querySelector('#admin-request-status');
+  const adminNote = document.querySelector('#admin-note');
+  const statusGuidance = document.querySelector('#admin-status-guidance');
+  const updateButton = document.querySelector('#admin-update-submit');
+  if (requestStatus && adminNote && statusGuidance && updateButton) {
+    const currentStatus = requestStatus.dataset.currentStatus;
+    const statusLabel = (value) => value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const updateActionDescription = () => {
+      const selectedStatus = requestStatus.value;
+      const unchanged = selectedStatus === currentStatus;
+      const needsResponse = unchanged || selectedStatus === 'declined';
+      adminNote.required = selectedStatus === 'declined';
+      updateButton.disabled = needsResponse && !adminNote.value.trim();
+      updateButton.textContent = unchanged ? 'Save response only' : 'Update status and notify student';
+      if (unchanged) {
+        statusGuidance.textContent = adminNote.value.trim()
+          ? `The status will remain ${statusLabel(currentStatus)}; only the response will be saved.`
+          : `Current status is ${statusLabel(currentStatus)}. Add a response to save without changing status.`;
+      } else {
+        statusGuidance.textContent = `This will change status from ${statusLabel(currentStatus)} to ${statusLabel(selectedStatus)}. A response is required when declining.`;
+      }
+    };
+    requestStatus.addEventListener('change', updateActionDescription);
+    adminNote.addEventListener('input', updateActionDescription);
+    updateActionDescription();
+  }
 })();

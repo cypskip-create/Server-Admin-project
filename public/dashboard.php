@@ -2,17 +2,12 @@
 require __DIR__.'/_init.php';
 require_login();
 $userId = (int)$_SESSION['user']['id'];
-$query = db()->prepare("SELECT COUNT(*) total,SUM(status IN ('submitted','in_review','in_progress')) open_count,SUM(status='completed') done FROM service_requests WHERE user_id=?");
-$query->execute([$userId]);
-$stats = $query->fetch();
-$query = db()->prepare('SELECT status,COUNT(*) amount FROM service_requests WHERE user_id=? GROUP BY status');
-$query->execute([$userId]);
-$breakdown = [];
-foreach ($query->fetchAll() as $row) $breakdown[$row['status']] = (int)$row['amount'];
+$stats = student_request_summary(db(), $userId);
+$breakdown = $stats;
 $query = db()->prepare('SELECT id,tracking_id,title,category,priority,status,created_at FROM service_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 5');
 $query->execute([$userId]);
 $recent = $query->fetchAll();
-$total = (int)($stats['total'] ?? 0);
+$total = $stats['total'];
 $name = (string)($_SESSION['user']['full_name'] ?? 'Student');
 page_start('Dashboard');
 ?>
@@ -27,8 +22,8 @@ page_start('Dashboard');
 
 <section class="stats" aria-label="Request statistics">
     <article><small>ALL REQUESTS</small><strong><?=$total?></strong></article>
-    <article><small>IN PROGRESS</small><strong><?=e($stats['open_count'] ?? 0)?></strong></article>
-    <article><small>COMPLETED</small><strong><?=e($stats['done'] ?? 0)?></strong></article>
+    <article><small>OPEN REQUESTS</small><strong><?=e($stats['open'])?></strong></article>
+    <article><small>COMPLETED REQUESTS</small><strong><?=e($stats['completed'])?></strong></article>
 </section>
 
 <section class="panel chart-panel" aria-labelledby="status-overview-title">
